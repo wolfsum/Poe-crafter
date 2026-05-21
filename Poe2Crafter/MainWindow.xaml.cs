@@ -16,7 +16,6 @@ public partial class MainWindow : Window
     private readonly ClipboardWatcher _watcher = new();
     private readonly MouseHooker _hooker = new();
     private DispatcherTimer? _clipTimer;
-    private DispatcherTimer? _ctrlCTimer;
 
     public MainWindow(MainViewModel vm)
     {
@@ -72,14 +71,9 @@ public partial class MainWindow : Window
     // Called when a left click passes through the hook — auto-send Ctrl+C after delay
     private void OnLeftClickPassed()
     {
-        _ctrlCTimer?.Stop();
-        _ctrlCTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(CtrlCDelayMs) };
-        _ctrlCTimer.Tick += (_, _) =>
-        {
-            _ctrlCTimer!.Stop();
-            SendCtrlC();
-        };
-        _ctrlCTimer.Start();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(CtrlCDelayMs) };
+        timer.Tick += (_, _) => { timer.Stop(); SendCtrlC(); };
+        timer.Start();
     }
 
     private static void SendCtrlC()
