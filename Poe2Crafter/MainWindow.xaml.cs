@@ -10,7 +10,7 @@ namespace Poe2Crafter;
 
 public partial class MainWindow : Window
 {
-    private const int CtrlCDelayMs = 350; // wait for PoE2 to process the currency use
+    private const int CtrlCDelayMs = 150; // wait for PoE2 to process the currency use
 
     private readonly MainViewModel _vm;
     private readonly ClipboardWatcher _watcher = new();
@@ -71,6 +71,7 @@ public partial class MainWindow : Window
     // Called when a left click passes through the hook — auto-send Ctrl+C after delay
     private void OnLeftClickPassed()
     {
+        _hooker.Blocking = true; // hold until clipboard check completes
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(CtrlCDelayMs) };
         timer.Tick += (_, _) => { timer.Stop(); SendCtrlC(); };
         timer.Start();
