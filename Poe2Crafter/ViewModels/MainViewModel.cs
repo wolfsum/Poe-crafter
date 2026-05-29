@@ -150,6 +150,58 @@ public class MainViewModel : ViewModelBase
 
     public string RunButtonText => IsRunning ? "■  Stop" : "▶  Start";
 
+    public string? LastItemHash { get; private set; }
+
+    private bool _isBlockingEnabled = true;
+    public bool IsBlockingEnabled
+    {
+        get => _isBlockingEnabled;
+        set => Set(ref _isBlockingEnabled, value);
+    }
+
+    // ── Auto-craft ────────────────────────────────────────────────────
+    private bool _isAutoMode;
+    public bool IsAutoMode
+    {
+        get => _isAutoMode;
+        set
+        {
+            Set(ref _isAutoMode, value);
+            AutoPanelVisibility = value ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private Visibility _autoPanelVisibility = Visibility.Collapsed;
+    public Visibility AutoPanelVisibility
+    {
+        get => _autoPanelVisibility;
+        private set => Set(ref _autoPanelVisibility, value);
+    }
+
+    private bool _currencySet;
+    public bool CurrencySet
+    {
+        get => _currencySet;
+        set => Set(ref _currencySet, value);
+    }
+
+    private bool _itemSet;
+    public bool ItemSet
+    {
+        get => _itemSet;
+        set => Set(ref _itemSet, value);
+    }
+
+    private bool _isCapturing;
+    public bool IsCapturing
+    {
+        get => _isCapturing;
+        set => Set(ref _isCapturing, value);
+    }
+
+    public RelayCommand SetCurrencyCommand { get; }
+    public RelayCommand SetItemCommand     { get; }
+
     // ── Commands ──────────────────────────────────────────────────────
     public RefreshableCommand AddTargetCommand { get; }
     public RelayCommand<TargetModViewModel> RemoveTargetCommand { get; }
@@ -160,9 +212,11 @@ public class MainViewModel : ViewModelBase
     {
         _db      = db;
         _matcher = new CraftMatcher(db);
-        AddTargetCommand    = new RefreshableCommand(AddTarget, () => SelectedGroup is not null && SelectedTier is not null);
-        RemoveTargetCommand = new RelayCommand<TargetModViewModel>(RemoveTarget);
+        AddTargetCommand     = new RefreshableCommand(AddTarget, () => SelectedGroup is not null && SelectedTier is not null);
+        RemoveTargetCommand  = new RelayCommand<TargetModViewModel>(RemoveTarget);
         ToggleRunningCommand = new RelayCommand(() => IsRunning = !IsRunning);
+        SetCurrencyCommand   = new RelayCommand(() => IsCapturing = true);
+        SetItemCommand       = new RelayCommand(() => IsCapturing = true);
 
         _selectedSlotOption = SlotOptions.First(s => s.Slot == ItemSlot.Ring);
         RefreshBaseOptions();
@@ -244,6 +298,8 @@ public class MainViewModel : ViewModelBase
 
         // Ignore partial/unrelated clipboard content — keep showing last known status
         if (item is null) return;
+
+        LastItemHash = string.Join("|", item.ModLines);
 
         var conditions = TargetMods.Select(t => t.ToCondition()).ToList();
         var result     = _matcher.Check(item, conditions);

@@ -9,9 +9,10 @@ public class RelayCommand(Action execute, Func<bool>? canExecute = null) : IComm
         add    => CommandManager.RequerySuggested += value;
         remove => CommandManager.RequerySuggested -= value;
     }
+    public event Action? Executed;
 
     public bool CanExecute(object? _) => canExecute?.Invoke() ?? true;
-    public void Execute(object? _)    => execute();
+    public void Execute(object? _)    { Executed?.Invoke(); execute(); }
 }
 
 public class RelayCommand<T>(Action<T> execute) : ICommand

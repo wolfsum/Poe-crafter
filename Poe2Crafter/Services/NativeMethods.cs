@@ -2,8 +2,16 @@ using System.Runtime.InteropServices;
 
 namespace Poe2Crafter.Services;
 
-internal static class NativeMethods
+public static class NativeMethods
 {
+    // ── Hotkey ────────────────────────────────────────────────────────
+    [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+    [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    public const int    WM_HOTKEY        = 0x0312;
+    public const ushort VK_F10           = 0x79;
+    public const int    HOTKEY_TOGGLE    = 1;
+
     // ── Clipboard ─────────────────────────────────────────────────────
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool AddClipboardFormatListener(IntPtr hwnd);
@@ -45,6 +53,21 @@ internal static class NativeMethods
         public uint mouseData, flags, time;
         public IntPtr dwExtraInfo;
     }
+
+    // ── Mouse movement / click ────────────────────────────────────────
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern int  GetSystemMetrics(int nIndex);
+
+    public const int  SM_CXSCREEN          = 0;
+    public const int  SM_CYSCREEN          = 1;
+    public const uint LLMHF_INJECTED       = 0x01;
+    public const uint INPUT_MOUSE          = 0;
+    public const uint MOUSEEVENTF_MOVE     = 0x0001;
+    public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+    public const uint MOUSEEVENTF_LEFTUP   = 0x0004;
+    public const uint MOUSEEVENTF_RIGHTDOWN= 0x0008;
+    public const uint MOUSEEVENTF_RIGHTUP  = 0x0010;
+    public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
 
     // ── SendInput (keyboard) ──────────────────────────────────────────
     [DllImport("user32.dll", SetLastError = true)]
