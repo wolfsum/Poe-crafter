@@ -82,7 +82,6 @@ public static class ItemTypeHelper
             [TabletType.Abyss]      = "Abyss Tablet",
             [TabletType.Breach]     = "Breach Tablet",
             [TabletType.Delirium]   = "Delirium Tablet",
-            [TabletType.Expedition] = "Expedition Tablet",
             [TabletType.Overseer]   = "Overseer Tablet",
             [TabletType.Ritual]     = "Ritual Tablet",
             [TabletType.Temple]     = "Temple Tablet",

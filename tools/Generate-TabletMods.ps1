@@ -52,6 +52,8 @@ $rows | Group-Object Tablet | ForEach-Object { Write-Output "  $($_.Name): $($_.
 # mods are split into one group per mod (group + affix slug) so the in-game
 # annotation tier (always 1) always matches.
 $entries = New-Object System.Collections.Generic.List[string]
+# Expedition tablets are not in the current patch — wiki data is stale there
+$rows = $rows | Where-Object { $_.Tablet -ne 'Expedition' }
 foreach ($r in $rows) {
     $tag  = "tablet_$($r.Tablet.ToLower())"
     $slug = ($r.Affix -replace "[^A-Za-z]", '')
