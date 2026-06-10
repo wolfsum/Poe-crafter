@@ -25,9 +25,10 @@ public sealed class AutoCrafter
     {
         try
         {
-            int cycleCount    = 0;
-            int sameHashCount = 0;
-            string? prevHash  = null;
+            int cycleCount     = 0;
+            int sameHashCount  = 0;
+            int failedCycles   = 0;
+            string? prevHash   = null;
 
             // Pick up currency stack once at start
             await MoveSmooth(GetCursor(), CurrencyPos, ct);
@@ -56,9 +57,12 @@ public sealed class AutoCrafter
 
                 if (shouldStop()) break;
 
-                // Safety: item hash unchanged → currency ran out or missed the item
+                // Safety: detect parse failures (empty hash) and item hash unchanged
                 var hash = getItemHash();
-                sameHashCount = (hash != null && hash == prevHash) ? sameHashCount + 1 : 0;
+                failedCycles = (hash == null || hash == "") ? failedCycles + 1 : 0;
+                if (failedCycles >= 10) break; // too many parse failures
+
+                sameHashCount = (hash != null && hash == prevHash && hash != "") ? sameHashCount + 1 : 0;
                 prevHash = hash;
                 if (sameHashCount >= 3) break;
 

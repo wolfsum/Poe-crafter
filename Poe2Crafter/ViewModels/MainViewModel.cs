@@ -286,6 +286,11 @@ public class MainViewModel : ViewModelBase
 
     public void OnClipboardChanged(string clipboardText)
     {
+        var item = ItemParser.TryParse(clipboardText);
+
+        // Update hash even on parse fail — null hash prevents false matches in AutoCrafter
+        LastItemHash = item?.ModLines?.Length > 0 ? string.Join("|", item.ModLines) : "";
+
         // Only process clipboard when actively running
         if (!IsRunning || TargetMods.Count == 0)
         {
@@ -294,12 +299,8 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        var item = ItemParser.TryParse(clipboardText);
-
         // Ignore partial/unrelated clipboard content — keep showing last known status
         if (item is null) return;
-
-        LastItemHash = string.Join("|", item.ModLines);
 
         var conditions = TargetMods.Select(t => t.ToCondition()).ToList();
         var result     = _matcher.Check(item, conditions);

@@ -65,6 +65,12 @@ public partial class MainWindow : Window
                 _vm.OnClipboardChanged(text);
             }
             catch (COMException) { }
+            finally
+            {
+                // Sync blocking state after every clipboard read
+                if (!_vm.IsAutoMode && _vm.IsRunning)
+                    _hooker.Blocking = _vm.IsStop && _vm.IsBlockingEnabled;
+            }
         };
         _clipTimer.Start();
     }
