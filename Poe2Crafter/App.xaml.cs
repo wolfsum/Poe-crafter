@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using Poe2Crafter.Core.Matching;
+using Poe2Crafter.Core.Models;
 using Poe2Crafter.Core.Parsing;
 using Poe2Crafter.ViewModels;
 
@@ -12,26 +13,32 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        var pobPath = Path.Combine(
+        var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Path of Building Community (PoE2)", "Data", "ModItem.lua");
+            "Path of Building Community (PoE2)", "Data");
 
-        if (!File.Exists(pobPath))
+        List<string> luaFiles = [];
+        if (Directory.Exists(dataDir))
+            luaFiles = Directory.GetFiles(dataDir, "*.lua").ToList();
+
+        if (luaFiles.Count == 0)
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Title    = "Locate ModItem.lua",
-                Filter   = "Lua files (*.lua)|*.lua",
-                FileName = "ModItem.lua",
+                Title  = "Locate Mod*.lua files (select one from Data folder)",
+                Filter = "Lua files (*.lua)|*.lua",
             };
             if (dlg.ShowDialog() != true) { Shutdown(); return; }
-            pobPath = dlg.FileName;
+            dataDir = Path.GetDirectoryName(dlg.FileName)!;
+            luaFiles = Directory.GetFiles(dataDir, "*.lua").ToList();
         }
 
-        var mods = PobModParser.ParseFile(pobPath);
-        var db   = new ModDatabase(mods);
-        var vm   = new MainViewModel(db);
+        var mods = new List<ModDefinition>();
+        foreach (var file in luaFiles.OrderBy(f => f))
+            mods.AddRange(PobModParser.ParseFile(file));
 
+        var db = new ModDatabase(mods);
+        var vm = new MainViewModel(db);
         new MainWindow(vm).Show();
     }
 }
