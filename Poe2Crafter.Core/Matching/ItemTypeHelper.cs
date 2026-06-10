@@ -14,6 +14,7 @@ public static class ItemTypeHelper
             [ItemSlot.Quiver]    = "Quiver",
             [ItemSlot.Focus]     = "Focus",
             [ItemSlot.Jewel]     = "Jewel",
+            [ItemSlot.Tablet]    = "Tablet",
             [ItemSlot.Helmet]    = "Helmet",
             [ItemSlot.Gloves]    = "Gloves",
             [ItemSlot.Boots]     = "Boots",
@@ -71,7 +72,23 @@ public static class ItemTypeHelper
     // Jewel slot that needs a type selection
     public static readonly IReadOnlySet<ItemSlot> JewelSlots = new HashSet<ItemSlot> { ItemSlot.Jewel };
 
-    public static IReadOnlySet<string> GetTags(ItemSlot slot, ArmourBase armourBase = ArmourBase.None, JewelType jewelType = JewelType.None)
+    // Tablet slot that needs a type selection
+    public static readonly IReadOnlySet<ItemSlot> TabletSlots = new HashSet<ItemSlot> { ItemSlot.Tablet };
+
+    public static readonly IReadOnlyDictionary<TabletType, string> TabletTypeDisplayNames =
+        new Dictionary<TabletType, string>
+        {
+            [TabletType.Irradiated] = "Irradiated Tablet",
+            [TabletType.Abyss]      = "Abyss Tablet",
+            [TabletType.Breach]     = "Breach Tablet",
+            [TabletType.Delirium]   = "Delirium Tablet",
+            [TabletType.Expedition] = "Expedition Tablet",
+            [TabletType.Overseer]   = "Overseer Tablet",
+            [TabletType.Ritual]     = "Ritual Tablet",
+            [TabletType.Temple]     = "Temple Tablet",
+        };
+
+    public static IReadOnlySet<string> GetTags(ItemSlot slot, ArmourBase armourBase = ArmourBase.None, JewelType jewelType = JewelType.None, TabletType tabletType = TabletType.None)
     {
         var tags = new HashSet<string>(SlotTags(slot));
 
@@ -82,6 +99,9 @@ public static class ItemTypeHelper
         if (JewelSlots.Contains(slot) && jewelType != JewelType.None)
             foreach (var t in JewelTypeTags(jewelType))
                 tags.Add(t);
+
+        if (TabletSlots.Contains(slot) && tabletType != TabletType.None)
+            tags.Add($"tablet_{tabletType.ToString().ToLowerInvariant()}");
 
         return tags;
     }
@@ -95,6 +115,7 @@ public static class ItemTypeHelper
         ItemSlot.Quiver     => ["quiver"],
         ItemSlot.Focus      => ["focus"],
         ItemSlot.Jewel      => ["jewel"],
+        ItemSlot.Tablet     => ["tablet"],
         ItemSlot.Helmet     => ["helmet", "armour"],
         ItemSlot.Gloves     => ["gloves", "armour"],
         ItemSlot.Boots      => ["boots", "armour"],

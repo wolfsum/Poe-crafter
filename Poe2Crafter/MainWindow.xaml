@@ -108,6 +108,11 @@
                       ItemsSource="{Binding JewelTypeOptions}"
                       SelectedItem="{Binding SelectedJewelType}"
                       Visibility="{Binding JewelTypeVisibility}"/>
+
+            <ComboBox Grid.Column="2"
+                      ItemsSource="{Binding TabletTypeOptions}"
+                      SelectedItem="{Binding SelectedTabletType}"
+                      Visibility="{Binding TabletTypeVisibility}"/>
         </Grid>
 
         <!-- Filter -->

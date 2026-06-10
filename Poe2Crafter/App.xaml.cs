@@ -41,6 +41,9 @@ public partial class App : Application
                 mods.AddRange(PobModParser.ParseFile(path));
         }
 
+        // Tablet pools are not in PoB data — embedded copy from poe2wiki
+        mods.AddRange(Poe2Crafter.Core.Data.TabletMods.All);
+
         var db = new ModDatabase(mods);
         var vm = new MainViewModel(db);
         new MainWindow(vm).Show();

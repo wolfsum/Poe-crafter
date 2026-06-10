@@ -70,6 +70,27 @@ public class MainViewModel : ViewModelBase
         private set => Set(ref _jewelTypeVisibility, value);
     }
 
+    // ── Tablet type ───────────────────────────────────────────────────
+    public IReadOnlyList<TabletTypeOption> TabletTypeOptions { get; } =
+        ItemTypeHelper.TabletTypeDisplayNames
+            .OrderBy(kv => kv.Value)
+            .Select(kv => new TabletTypeOption(kv.Key, kv.Value))
+            .ToList();
+
+    private TabletTypeOption? _selectedTabletType;
+    public TabletTypeOption? SelectedTabletType
+    {
+        get => _selectedTabletType;
+        set { Set(ref _selectedTabletType, value); RefreshModGroups(); }
+    }
+
+    private Visibility _tabletTypeVisibility = Visibility.Collapsed;
+    public Visibility TabletTypeVisibility
+    {
+        get => _tabletTypeVisibility;
+        private set => Set(ref _tabletTypeVisibility, value);
+    }
+
     // ── Mod groups ────────────────────────────────────────────────────
     private string _filter = "";
     public string Filter
@@ -262,38 +283,42 @@ public class MainViewModel : ViewModelBase
         BaseOptions.Clear();
         var slot = _selectedSlotOption?.Slot ?? ItemSlot.Ring;
 
+        _selectedBaseOption = null;
+        _selectedJewelType  = null;
+        _selectedTabletType = null;
+        BaseVisibility       = Visibility.Collapsed;
+        JewelTypeVisibility  = Visibility.Collapsed;
+        TabletTypeVisibility = Visibility.Collapsed;
+
         if (ItemTypeHelper.ArmourSlots.Contains(slot))
         {
             foreach (var kv in ItemTypeHelper.ArmourBaseDisplayNames.Where(kv => kv.Key != ArmourBase.None))
                 BaseOptions.Add(new BaseOption(kv.Key, kv.Value));
             _selectedBaseOption = BaseOptions.FirstOrDefault();
             BaseVisibility = Visibility.Visible;
-            JewelTypeVisibility = Visibility.Collapsed;
         }
         else if (ItemTypeHelper.JewelSlots.Contains(slot))
         {
-            _selectedBaseOption = null;
-            BaseVisibility = Visibility.Collapsed;
             _selectedJewelType = JewelTypeOptions.FirstOrDefault();
             JewelTypeVisibility = Visibility.Visible;
         }
-        else
+        else if (ItemTypeHelper.TabletSlots.Contains(slot))
         {
-            _selectedBaseOption = null;
-            BaseVisibility = Visibility.Collapsed;
-            _selectedJewelType = null;
-            JewelTypeVisibility = Visibility.Collapsed;
+            _selectedTabletType = TabletTypeOptions.FirstOrDefault();
+            TabletTypeVisibility = Visibility.Visible;
         }
         Notify(nameof(SelectedBaseOption));
         Notify(nameof(SelectedJewelType));
+        Notify(nameof(SelectedTabletType));
     }
 
     private void RefreshModGroups()
     {
-        var slot = _selectedSlotOption?.Slot ?? ItemSlot.Ring;
+        var slot       = _selectedSlotOption?.Slot ?? ItemSlot.Ring;
         var armourBase = _selectedBaseOption?.Base ?? ArmourBase.None;
-        var jewelType = _selectedJewelType?.Type ?? JewelType.None;
-        _allGroups = _db.GetGroups(slot, armourBase, jewelType);
+        var jewelType  = _selectedJewelType?.Type ?? JewelType.None;
+        var tabletType = _selectedTabletType?.Type ?? TabletType.None;
+        _allGroups = _db.GetGroups(slot, armourBase, jewelType, tabletType);
         ApplyFilter();
     }
 
@@ -402,11 +427,17 @@ public class MainViewModel : ViewModelBase
             var opt = JewelTypeOptions.FirstOrDefault(o => o.Type == jt);
             if (opt != null) SelectedJewelType = opt;
         }
+        if (Enum.TryParse<TabletType>(s.TabletType, out var tt))
+        {
+            var opt = TabletTypeOptions.FirstOrDefault(o => o.Type == tt);
+            if (opt != null) SelectedTabletType = opt;
+        }
 
         var slotNow   = SelectedSlotOption?.Slot ?? ItemSlot.Ring;
         var baseNow   = SelectedBaseOption?.Base ?? ArmourBase.None;
         var jewelNow  = SelectedJewelType?.Type ?? JewelType.None;
-        var groups    = _db.GetGroups(slotNow, baseNow, jewelNow);
+        var tabletNow = SelectedTabletType?.Type ?? TabletType.None;
+        var groups    = _db.GetGroups(slotNow, baseNow, jewelNow, tabletNow);
 
         foreach (var t in s.Targets)
         {
@@ -427,6 +458,7 @@ public class MainViewModel : ViewModelBase
         s.Slot       = SelectedSlotOption?.Slot.ToString();
         s.ArmourBase = SelectedBaseOption?.Base.ToString();
         s.JewelType  = SelectedJewelType?.Type.ToString();
+        s.TabletType = SelectedTabletType?.Type.ToString();
         s.Targets    = TargetMods
             .Select(t => new Services.TargetSetting
             {

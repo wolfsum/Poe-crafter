@@ -15,6 +15,7 @@ public class AppSettings
     public string? Slot       { get; set; }
     public string? ArmourBase { get; set; }
     public string? JewelType  { get; set; }
+    public string? TabletType { get; set; }
     public List<TargetSetting> Targets { get; set; } = [];
 
     public bool IsBlockingEnabled { get; set; } = true;

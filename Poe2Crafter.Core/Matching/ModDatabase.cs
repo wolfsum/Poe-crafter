@@ -25,9 +25,9 @@ public class ModDatabase
 
     // All mod groups available for a given item slot + armour base.
     // Groups are sorted alphabetically, tiers within each group best-first.
-    public IReadOnlyList<ModGroup> GetGroups(ItemSlot slot, ArmourBase armourBase = ArmourBase.None, JewelType jewelType = JewelType.None)
+    public IReadOnlyList<ModGroup> GetGroups(ItemSlot slot, ArmourBase armourBase = ArmourBase.None, JewelType jewelType = JewelType.None, TabletType tabletType = TabletType.None)
     {
-        var tags = ItemTypeHelper.GetTags(slot, armourBase, jewelType);
+        var tags = ItemTypeHelper.GetTags(slot, armourBase, jewelType, tabletType);
 
         return AllMods
             .Where(m => m.ItemTags.Any(tags.Contains))

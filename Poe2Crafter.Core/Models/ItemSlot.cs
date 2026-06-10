@@ -10,6 +10,7 @@ public enum ItemSlot
     Quiver,
     Focus,
     Jewel,
+    Tablet,
 
     // Armour slots (need ArmourBase)
     Helmet,

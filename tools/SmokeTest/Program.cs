@@ -9,9 +9,39 @@ var dataDir = Path.Combine(
 var mods = new List<ModDefinition>();
 foreach (var f in new[] { "ModItem.lua", "ModJewel.lua" })
     mods.AddRange(PobModParser.ParseFile(Path.Combine(dataDir, f)));
+mods.AddRange(Poe2Crafter.Core.Data.TabletMods.All);
 
 var db = new ModDatabase(mods);
 Console.WriteLine($"Total mods loaded: {mods.Count}");
+
+foreach (var tt in new[] { TabletType.Irradiated, TabletType.Breach, TabletType.Overseer })
+{
+    var groups = db.GetGroups(ItemSlot.Tablet, tabletType: tt);
+    Console.WriteLine($"=== {tt} Tablet: {groups.Count} groups ===");
+    foreach (var g in groups.Take(3)) Console.WriteLine($"  {g.DisplayName}");
+}
+
+var tabletClip = """
+Item Class: Tablet
+Rarity: Magic
+Teeming Breach Tablet of Plenty
+--------
+10 uses remaining
+--------
+Item Level: 79
+--------
+{ Prefix Modifier "Teeming" (Tier: 1) }
+Map has 35(30-40)% increased Magic Monsters
+{ Suffix Modifier "of the Horde" (Tier: 1) }
+Breaches in Map have 12(5-15)% increased Monster density
+--------
+Adds an Otherworldy Breach to a Map
+""";
+var titem = ItemParser.TryParse(tabletClip);
+Console.WriteLine($"=== Tablet clipboard: {(titem is null ? "NULL!" : $"{titem.Mods.Count} mods")} ===");
+if (titem != null)
+    foreach (var m in titem.Mods)
+        Console.WriteLine($"  '{m.Text}' -> {db.Match(m.Text).Count} match(es)");
 
 foreach (var jt in new[] { JewelType.Ruby, JewelType.Emerald, JewelType.Sapphire, JewelType.Diamond,
                            JewelType.TimeLostRuby, JewelType.TimeLostEmerald, JewelType.TimeLostSapphire, JewelType.TimeLostDiamond })

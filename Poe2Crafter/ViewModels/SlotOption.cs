@@ -16,3 +16,8 @@ public record JewelTypeOption(JewelType Type, string Name)
 {
     public override string ToString() => Name;
 }
+
+public record TabletTypeOption(TabletType Type, string Name)
+{
+    public override string ToString() => Name;
+}

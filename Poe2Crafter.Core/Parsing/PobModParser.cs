@@ -153,7 +153,7 @@ public static class PobModParser
             .ToArray();
     }
 
-    private static (double[] min, double[] max) ExtractRanges(string template)
+    public static (double[] min, double[] max) ExtractRanges(string template)
     {
         var matches = RangeExtract.Matches(template);
         var min = new double[matches.Count];
@@ -166,7 +166,7 @@ public static class PobModParser
         return (min, max);
     }
 
-    private static string BuildMatchRegex(string template)
+    public static string BuildMatchRegex(string template)
     {
         var parts = Regex.Split(template, @"\(\d+(?:\.\d+)?-\d+(?:\.\d+)?\)");
         return string.Join(@"(\d+(?:\.\d+)?)", parts.Select(Regex.Escape));
