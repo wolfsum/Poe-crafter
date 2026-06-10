@@ -30,7 +30,12 @@ public sealed class AutoCrafter
             int failedCycles   = 0;
             string? prevHash   = null;
 
-            // Pick up currency stack once at start
+            // Don't touch the mouse until PoE2 is the active window
+            while (!ct.IsCancellationRequested && !IsPoE2Active())
+                await Delay(300, 0, ct);
+            ct.ThrowIfCancellationRequested();
+
+            // Pick up currency stack once at start (right-click puts the stack on cursor)
             await MoveSmooth(GetCursor(), CurrencyPos, ct);
             await Delay(60, 20, ct);
             Click(CurrencyPos, right: true);
