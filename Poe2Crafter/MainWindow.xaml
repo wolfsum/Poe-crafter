@@ -68,11 +68,12 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="PoE2 Crafter" FontSize="15" FontWeight="SemiBold"
                            Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding VersionText}" FontSize="10"
+                           Foreground="{StaticResource DimBrush}"
+                           VerticalAlignment="Bottom" Margin="5,0,0,2"/>
                 <Button Content="{Binding UpdateText}"
-                        Visibility="{Binding UpdateVisibility}"
                         Command="{Binding UpdateCommand}"
-                        Margin="10,0,0,0" Padding="6,2" FontSize="11"
-                        Foreground="#1e1e1e" Background="{StaticResource AccentBrush}"/>
+                        Margin="8,0,0,0" Padding="6,2" FontSize="11"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
                 <CheckBox Content="Block" IsChecked="{Binding IsBlockingEnabled}"

@@ -23,9 +23,9 @@ public static class UpdateService
         return http;
     }
 
-    // Returns info when a newer release with an exe asset exists, otherwise null.
-    // Never throws — update check must not break startup.
-    public static async Task<UpdateInfo?> CheckAsync()
+    // Info when a newer release with an exe asset exists; Error when the check
+    // itself failed (offline, 404 on private repo, …). (null, null) = up to date.
+    public static async Task<(UpdateInfo? Info, string? Error)> CheckAsync()
     {
         try
         {
@@ -34,18 +34,28 @@ public static class UpdateService
             using var doc = JsonDocument.Parse(json);
 
             var tag = doc.RootElement.GetProperty("tag_name").GetString() ?? "";
-            if (!Version.TryParse(tag.TrimStart('v', 'V'), out var latest)) return null;
-            if (latest <= Current) return null;
+            if (!Version.TryParse(tag.TrimStart('v', 'V'), out var latest))
+                return (null, $"Bad release tag: {tag}");
+            if (latest <= Current) return (null, null);
 
             foreach (var asset in doc.RootElement.GetProperty("assets").EnumerateArray())
             {
                 var name = asset.GetProperty("name").GetString() ?? "";
                 if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                    return new UpdateInfo(latest, asset.GetProperty("browser_download_url").GetString()!);
+                    return (new UpdateInfo(latest, asset.GetProperty("browser_download_url").GetString()!), null);
             }
+            return (null, "Release has no exe asset");
         }
-        catch { }
-        return null;
+        catch (HttpRequestException ex)
+        {
+            return (null, ex.StatusCode == System.Net.HttpStatusCode.NotFound
+                ? "404 — repo is private or no releases"
+                : $"HTTP error: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.Message);
+        }
     }
 
     // Download new exe, swap binaries (running exe can be renamed, not overwritten),

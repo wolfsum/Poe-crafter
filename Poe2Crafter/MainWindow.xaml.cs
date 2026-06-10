@@ -35,32 +35,63 @@ public partial class MainWindow : Window
         LoadSettings();
 
         UpdateService.CleanupOldBinary();
-        _ = CheckForUpdateAsync();
+        _ = CheckForUpdateAsync(silent: true);
     }
 
     // ── Updates ───────────────────────────────────────────────────────
     private UpdateService.UpdateInfo? _pendingUpdate;
+    private bool _updateBusy;
 
-    private async Task CheckForUpdateAsync()
+    private async Task CheckForUpdateAsync(bool silent)
     {
-        _pendingUpdate = await UpdateService.CheckAsync();
-        if (_pendingUpdate != null)
-            _vm.UpdateText = $"⬆ Update to v{_pendingUpdate.Version.ToString(3)}";
+        if (!silent) _vm.UpdateText = "Checking…";
+
+        var (info, error) = await UpdateService.CheckAsync();
+        _pendingUpdate = info;
+
+        if (info != null)
+        {
+            _vm.UpdateText = $"⬆ Get v{info.Version.ToString(3)}";
+        }
+        else if (!silent)
+        {
+            if (error != null)
+            {
+                _vm.UpdateText = "⟳ Check";
+                _vm.ShowNotice($"Update check: {error}");
+            }
+            else
+            {
+                _vm.UpdateText = "✓ Latest";
+                var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                t.Tick += (_, _) => { t.Stop(); _vm.UpdateText = "⟳ Check"; };
+                t.Start();
+            }
+        }
     }
 
     private async void OnUpdateRequested()
     {
-        if (_pendingUpdate is null) return;
-        _vm.UpdateText = "Downloading…";
+        if (_updateBusy) return;
+        _updateBusy = true;
         try
         {
-            await UpdateService.DownloadAndApplyAsync(_pendingUpdate);
+            if (_pendingUpdate is null)
+            {
+                await CheckForUpdateAsync(silent: false);
+            }
+            else
+            {
+                _vm.UpdateText = "Downloading…";
+                await UpdateService.DownloadAndApplyAsync(_pendingUpdate);
+            }
         }
         catch (Exception ex)
         {
-            _vm.UpdateText = "Update failed";
+            _vm.UpdateText = "⟳ Check";
             _vm.ShowNotice($"Update error: {ex.Message}");
         }
+        finally { _updateBusy = false; }
     }
 
     private void LoadSettings()
