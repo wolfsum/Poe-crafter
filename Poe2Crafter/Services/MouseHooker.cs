@@ -5,7 +5,7 @@ namespace Poe2Crafter.Services;
 
 public sealed class MouseHooker : IDisposable
 {
-    private const int    WH_MOUSE_LL   = 14;
+    private const int    WH_MOUSE_LL    = 14;
     private const int    WM_LBUTTONDOWN = 0x0201;
     private const int    WM_MOUSEMOVE   = 0x0200;
     private const double BlockRadius    = 200; // pixels to move before auto-unblock
@@ -14,14 +14,18 @@ public sealed class MouseHooker : IDisposable
 
     private IntPtr _hook;
     private IntPtr _ownHwnd;
-    private IntPtr _poe2Hwnd;
+    private bool   _running;   // hook belongs to a Start/Stop session (not just capture)
 
-    private bool              _blocking;
+    private bool                _blocking;
     private NativeMethods.POINT _blockOrigin;
-    private bool              _capturing;
+    private bool                _capturing;
 
-    public event Action?                        ClickPassed;
-    public event Action<NativeMethods.POINT>?   PositionCaptured;
+    // Foreground-window check cache — re-evaluated only when focus changes
+    private IntPtr _cachedFg;
+    private bool   _cachedInPoe2;
+
+    public event Action?                      ClickPassed;
+    public event Action<NativeMethods.POINT>? PositionCaptured;
 
     public bool Blocking
     {
@@ -37,10 +41,9 @@ public sealed class MouseHooker : IDisposable
 
     public bool Start(IntPtr ownHwnd)
     {
-        if (_hook != IntPtr.Zero) return true;
-        _ownHwnd  = ownHwnd;
-        _poe2Hwnd = FindPoE2Window();
-        return Attach();
+        _ownHwnd = ownHwnd;
+        _running = true;
+        return _hook != IntPtr.Zero || Attach();
     }
 
     public void StartCapture(IntPtr ownHwnd)
@@ -60,10 +63,16 @@ public sealed class MouseHooker : IDisposable
 
     public void Stop()
     {
+        _running  = false;
+        _blocking = false;
+        Unhook();
+    }
+
+    private void Unhook()
+    {
         if (_hook == IntPtr.Zero) return;
         NativeMethods.UnhookWindowsHookEx(_hook);
-        _hook     = IntPtr.Zero;
-        _blocking = false;
+        _hook = IntPtr.Zero;
     }
 
     private IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam)
@@ -83,13 +92,12 @@ public sealed class MouseHooker : IDisposable
                     if (_capturing && wParam == (IntPtr)WM_LBUTTONDOWN)
                     {
                         _capturing = false;
-                        if (!_blocking) Stop(); // unhook if not running
+                        if (!_running) Unhook(); // keep the hook if a session owns it
                         PositionCaptured?.Invoke(ms.pt);
                         return (IntPtr)1; // swallow calibration click
                     }
 
-                    bool inPoE2 = _poe2Hwnd == IntPtr.Zero || fg == _poe2Hwnd;
-                    if (inPoE2)
+                    if (_running && InPoe2(fg))
                     {
                         if (wParam == (IntPtr)WM_MOUSEMOVE && _blocking)
                         {
@@ -110,13 +118,16 @@ public sealed class MouseHooker : IDisposable
         return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 
-    private static IntPtr FindPoE2Window()
+    // True when fg is a PoE2 window; if PoE2 isn't running at all, any window
+    // counts — keeps the tool testable outside the game
+    private bool InPoe2(IntPtr fg)
     {
-        foreach (var name in new[] { "PathOfExile", "PathOfExile_x64", "PathOfExile2" })
-            foreach (var p in Process.GetProcessesByName(name))
-                if (p.MainWindowHandle != IntPtr.Zero)
-                    return p.MainWindowHandle;
-        return IntPtr.Zero;
+        if (fg != _cachedFg)
+        {
+            _cachedFg     = fg;
+            _cachedInPoe2 = Poe2Process.IsPoe2Window(fg);
+        }
+        return _cachedInPoe2 || !Poe2Process.AnyRunning();
     }
 
     public void Dispose() => Stop();

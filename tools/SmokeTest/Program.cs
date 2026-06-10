@@ -33,49 +33,67 @@ Radius: Small
 --------
 Item Level: 81
 --------
+{ Prefix Modifier "Flowing" (Tier: 1) }
 Notable Passive Skills in Radius also grant 5(3-7)% increased Critical Hit Chance
+{ Suffix Modifier "of Precision" (Tier: 1) }
 Small Passive Skills in Radius also grant 2(1-2)% increased Accuracy Rating
 --------
 Place into an allocated Jewel Socket on the Passive Skill Tree.
 """;
 
-var item = ItemParser.TryParse(clip);
-Console.WriteLine($"\n=== Clipboard parse: {(item is null ? "NULL!" : $"{item.ModLines.Length} mod lines")} ===");
-if (item != null)
-{
-    foreach (var line in item.ModLines)
-    {
-        var matches = db.Match(line);
-        Console.WriteLine($"  '{line}' -> {matches.Count} match(es)");
-        foreach (var m in matches.Take(3))
-            Console.WriteLine($"      [{m.Mod.Group}] T{m.Mod.Tier} {m.Mod.Template}");
-    }
-}
+PrintParse("Time-Lost Emerald (annotated)", clip);
 
-// And a regular rare with range hints (the original "missed mods" bug)
+// Rare with annotations, implicit, enchant and rune — only prefix/suffix must count
 var clip2 = """
 Item Class: Body Armours
 Rarity: Rare
 Doom Shelter
 Full Plate
 --------
-Armour: 270
+Armour: 270 (augmented)
 --------
 Item Level: 82
 --------
+{ Implicit Modifier }
++25(20-30) to Spirit (implicit)
+--------
+{ Rune Modifier }
++12% to Fire Resistance (rune)
+{ Prefix Modifier "Hale" (Tier: 5) — Life }
 +62(60-80) to maximum Life
+{ Suffix Modifier "of the Span" (Tier: 3) — Elemental, Resistance }
 +10(5-10)% to all Elemental Resistances
+--------
+Corrupted
 """;
 
-var item2 = ItemParser.TryParse(clip2);
-Console.WriteLine($"\n=== Rare armour parse: {(item2 is null ? "NULL!" : $"{item2.ModLines.Length} mod lines")} ===");
-if (item2 != null)
+PrintParse("Rare armour (annotated, implicit+rune)", clip2);
+
+// Plain copy without annotations (fallback path)
+var clip3 = """
+Item Class: Body Armours
+Rarity: Rare
+Doom Shelter
+Full Plate
+--------
+Item Level: 82
+--------
++12% to Fire Resistance (rune)
++62 to maximum Life
+""";
+
+PrintParse("Rare armour (plain copy)", clip3);
+
+void PrintParse(string title, string text)
 {
-    foreach (var line in item2.ModLines)
+    var item = ItemParser.TryParse(text);
+    Console.WriteLine($"\n=== {title}: {(item is null ? "NULL!" : $"{item.Mods.Count} mod lines")} ===");
+    if (item is null) return;
+    foreach (var mod in item.Mods)
     {
-        var matches = db.Match(line);
-        Console.WriteLine($"  '{line}' -> {matches.Count} match(es)");
+        var matches = db.Match(mod.Text);
+        Console.WriteLine($"  '{mod.Text}' (annTier={mod.Tier}) -> {matches.Count} match(es)");
         foreach (var m in matches.Take(3))
-            Console.WriteLine($"      [{m.Mod.Group}] T{m.Mod.Tier}");
+            Console.WriteLine($"      [{m.Mod.Group}] dbT{m.Mod.Tier} {m.Mod.Template}");
     }
 }

@@ -9,9 +9,11 @@ public class CraftMatcher(ModDatabase db)
         if (targets.Count == 0)
             return new MatchResult(true, false, [], []);
 
-        // Match every mod line in the item against the database
-        var allMatches = item.ModLines
-            .SelectMany(line => db.Match(line).Select(m => (line, m)))
+        // Match every mod line against the database. The tier parsed from the
+        // in-game annotation wins over the DB tier inferred from value ranges.
+        var allMatches = item.Mods
+            .SelectMany(line => db.Match(line.Text)
+                .Select(m => (line, m, tier: line.Tier > 0 ? line.Tier : m.Mod.Tier)))
             .ToList();
 
         var hits   = new List<HitInfo>();
@@ -21,12 +23,13 @@ public class CraftMatcher(ModDatabase db)
         {
             var hit = allMatches.FirstOrDefault(x =>
                 x.m.Mod.Group == target.GroupId &&
-                (target.Mode == TierMatchMode.AtLeast
-                    ? x.m.Mod.Tier >= target.Tier
-                    : x.m.Mod.Tier == target.Tier));
+                (target.Tier == 0 || // untiered mods (jewels): any roll counts
+                 (target.Mode == TierMatchMode.AtLeast
+                    ? x.tier >= target.Tier
+                    : x.tier == target.Tier)));
 
             if (hit != default)
-                hits.Add(new HitInfo(target, hit.line, hit.m.PrimaryValue, hit.m.Mod.Tier));
+                hits.Add(new HitInfo(target, hit.line.Text, hit.m.PrimaryValue, hit.tier));
             else
                 misses.Add(target);
         }

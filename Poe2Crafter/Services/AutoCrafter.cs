@@ -12,7 +12,7 @@ public sealed class AutoCrafter
 
     public bool IsRunning => _cts is { IsCancellationRequested: false };
 
-    public void Start(Func<bool> shouldStop, Func<string?> getItemHash, Action onStopped)
+    public void Start(Func<bool> shouldStop, Func<string?> getItemHash, Action<string?> onStopped)
     {
         _cts = new CancellationTokenSource();
         Task.Run(() => RunLoop(shouldStop, getItemHash, onStopped, _cts.Token));
@@ -21,8 +21,9 @@ public sealed class AutoCrafter
     public void Stop() => _cts?.Cancel();
 
     // ── Main loop ─────────────────────────────────────────────────────
-    private async Task RunLoop(Func<bool> shouldStop, Func<string?> getItemHash, Action onStopped, CancellationToken ct)
+    private async Task RunLoop(Func<bool> shouldStop, Func<string?> getItemHash, Action<string?> onStopped, CancellationToken ct)
     {
+        string? stopReason = null;
         try
         {
             int cycleCount     = 0;
@@ -60,16 +61,24 @@ public sealed class AutoCrafter
                 // Wait for clipboard + VM to process
                 await Delay(Rng(220, 280), 30, ct);
 
-                if (shouldStop()) break;
+                if (shouldStop()) break; // target hit — STOP panel already shown
 
                 // Safety: detect parse failures (empty hash) and item hash unchanged
                 var hash = getItemHash();
                 failedCycles = (hash == null || hash == "") ? failedCycles + 1 : 0;
-                if (failedCycles >= 10) break; // too many parse failures
+                if (failedCycles >= 10)
+                {
+                    stopReason = "Не читается предмет — проверь позицию Item";
+                    break;
+                }
 
                 sameHashCount = (hash != null && hash == prevHash && hash != "") ? sameHashCount + 1 : 0;
                 prevHash = hash;
-                if (sameHashCount >= 3) break;
+                if (sameHashCount >= 3)
+                {
+                    stopReason = "Предмет не меняется — валюта закончилась?";
+                    break;
+                }
 
                 cycleCount++;
 
@@ -79,7 +88,7 @@ public sealed class AutoCrafter
             }
         }
         catch (OperationCanceledException) { }
-        finally { onStopped(); }
+        finally { onStopped(stopReason); }
     }
 
     // ── Mouse helpers ─────────────────────────────────────────────────
@@ -146,18 +155,9 @@ public sealed class AutoCrafter
         return p;
     }
 
-    private static bool IsPoE2Active()
-    {
-        var fg = NativeMethods.GetForegroundWindow();
-        foreach (var name in new[] { "PathOfExile", "PathOfExile_x64", "PathOfExile2" })
-        {
-            var procs = System.Diagnostics.Process.GetProcessesByName(name);
-            bool found = procs.Any(p => p.MainWindowHandle == fg);
-            foreach (var p in procs) p.Dispose();
-            if (found) return true;
-        }
-        return false;
-    }
+    // Strict: auto-clicking only happens with the real game focused
+    private static bool IsPoE2Active() =>
+        Poe2Process.IsPoe2Window(NativeMethods.GetForegroundWindow());
 
     private static float Bezier(float p0, float p1, float p2, float p3, float t)
     {

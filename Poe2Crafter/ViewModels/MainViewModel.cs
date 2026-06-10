@@ -319,13 +319,12 @@ public class MainViewModel : ViewModelBase
 
     public void OnClipboardChanged(string clipboardText)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         var item = ItemParser.TryParse(clipboardText);
-        sw.Stop();
-        System.Diagnostics.Debug.WriteLine($"[Parse] {sw.ElapsedMilliseconds}ms");
 
-        // Update hash even on parse fail — null hash prevents false matches in AutoCrafter
-        LastItemHash = item?.ModLines?.Length > 0 ? string.Join("|", item.ModLines) : "";
+        // Update hash even on parse fail — empty hash prevents false matches in AutoCrafter
+        LastItemHash = item is { Mods.Count: > 0 }
+            ? string.Join("|", item.Mods.Select(m => m.Text))
+            : "";
 
         // Only process clipboard when actively running
         if (!IsRunning || TargetMods.Count == 0)
@@ -338,11 +337,8 @@ public class MainViewModel : ViewModelBase
         // Ignore partial/unrelated clipboard content — keep showing last known status
         if (item is null) return;
 
-        var sw2 = System.Diagnostics.Stopwatch.StartNew();
         var conditions = TargetMods.Select(t => t.ToCondition()).ToList();
         var result     = _matcher.Check(item, conditions);
-        sw2.Stop();
-        System.Diagnostics.Debug.WriteLine($"[Match] {sw2.ElapsedMilliseconds}ms");
 
         MatchedLines.Clear();
         StatusVisibility = Visibility.Visible;
@@ -366,4 +362,67 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    // Orange info banner (auto-craft stop reasons etc.)
+    public void ShowNotice(string message)
+    {
+        MatchedLines.Clear();
+        StatusText       = $"⚠  {message}";
+        StatusBrush      = new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x22));
+        StatusVisibility = Visibility.Visible;
+    }
+
+    // ── Settings persistence ──────────────────────────────────────────
+    public void ApplySettings(Services.AppSettings s)
+    {
+        if (Enum.TryParse<ItemSlot>(s.Slot, out var slot))
+        {
+            var opt = SlotOptions.FirstOrDefault(o => o.Slot == slot);
+            if (opt != null) SelectedSlotOption = opt; // triggers base/jewel refresh
+        }
+        if (Enum.TryParse<ArmourBase>(s.ArmourBase, out var ab))
+        {
+            var opt = BaseOptions.FirstOrDefault(o => o.Base == ab);
+            if (opt != null) SelectedBaseOption = opt;
+        }
+        if (Enum.TryParse<JewelType>(s.JewelType, out var jt))
+        {
+            var opt = JewelTypeOptions.FirstOrDefault(o => o.Type == jt);
+            if (opt != null) SelectedJewelType = opt;
+        }
+
+        var slotNow   = SelectedSlotOption?.Slot ?? ItemSlot.Ring;
+        var baseNow   = SelectedBaseOption?.Base ?? ArmourBase.None;
+        var jewelNow  = SelectedJewelType?.Type ?? JewelType.None;
+        var groups    = _db.GetGroups(slotNow, baseNow, jewelNow);
+
+        foreach (var t in s.Targets)
+        {
+            var group = groups.FirstOrDefault(g => g.GroupId == t.GroupId);
+            var tier  = group?.Tiers.FirstOrDefault(x => x.Tier == t.Tier);
+            if (group is null || tier is null) continue;
+            if (TargetMods.Any(x => x.Group.GroupId == group.GroupId)) continue;
+            TargetMods.Add(new TargetModViewModel(group, tier) { IsExact = t.IsExact });
+        }
+        if (TargetMods.Count > 0) TargetListVisibility = Visibility.Visible;
+
+        IsBlockingEnabled = s.IsBlockingEnabled;
+        IsAutoMode        = s.IsAutoMode;
+    }
+
+    public void FillSettings(Services.AppSettings s)
+    {
+        s.Slot       = SelectedSlotOption?.Slot.ToString();
+        s.ArmourBase = SelectedBaseOption?.Base.ToString();
+        s.JewelType  = SelectedJewelType?.Type.ToString();
+        s.Targets    = TargetMods
+            .Select(t => new Services.TargetSetting
+            {
+                GroupId = t.Group.GroupId,
+                Tier    = t.TargetTier.Tier,
+                IsExact = t.IsExact,
+            })
+            .ToList();
+        s.IsBlockingEnabled = IsBlockingEnabled;
+        s.IsAutoMode        = IsAutoMode;
+    }
 }

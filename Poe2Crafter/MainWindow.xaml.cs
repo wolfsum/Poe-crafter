@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly MouseHooker      _hooker  = new();
     private readonly AutoCrafter      _crafter = new();
     private DispatcherTimer? _clipTimer;
+    private DispatcherTimer? _unblockTimer;
     private bool _calibratingCurrency;
 
     public MainWindow(MainViewModel vm)
@@ -28,6 +29,37 @@ public partial class MainWindow : Window
         _vm.PropertyChanged       += OnVmPropertyChanged;
         _vm.SetCurrencyCommand.Executed += () => _calibratingCurrency = true;
         _vm.SetItemCommand.Executed     += () => _calibratingCurrency = false;
+
+        LoadSettings();
+    }
+
+    private void LoadSettings()
+    {
+        var s = SettingsStore.Load();
+        if (!double.IsNaN(s.WindowLeft)) Left = s.WindowLeft;
+        if (!double.IsNaN(s.WindowTop))  Top  = s.WindowTop;
+
+        _vm.ApplySettings(s);
+
+        _crafter.CurrencyPos = new NativeMethods.POINT { X = s.CurrencyX, Y = s.CurrencyY };
+        _crafter.ItemPos     = new NativeMethods.POINT { X = s.ItemX,     Y = s.ItemY };
+        _vm.CurrencySet      = s.CurrencySet;
+        _vm.ItemSet          = s.ItemSet;
+    }
+
+    private void SaveSettings()
+    {
+        var s = new AppSettings();
+        _vm.FillSettings(s);
+        s.CurrencyX   = _crafter.CurrencyPos.X;
+        s.CurrencyY   = _crafter.CurrencyPos.Y;
+        s.ItemX       = _crafter.ItemPos.X;
+        s.ItemY       = _crafter.ItemPos.Y;
+        s.CurrencySet = _vm.CurrencySet;
+        s.ItemSet     = _vm.ItemSet;
+        s.WindowLeft  = Left;
+        s.WindowTop   = Top;
+        SettingsStore.Save(s);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -68,6 +100,7 @@ public partial class MainWindow : Window
             finally
             {
                 // Sync blocking state after every clipboard read
+                _unblockTimer?.Stop();
                 if (!_vm.IsAutoMode && _vm.IsRunning)
                     _hooker.Blocking = _vm.IsStop && _vm.IsBlockingEnabled;
             }
@@ -94,7 +127,11 @@ public partial class MainWindow : Window
                     _crafter.Start(
                         () => _vm.IsStop,
                         () => _vm.LastItemHash,
-                        () => Dispatcher.Invoke(() => _vm.IsRunning = false));
+                        reason => Dispatcher.Invoke(() =>
+                        {
+                            _vm.IsRunning = false;
+                            if (reason != null) _vm.ShowNotice(reason);
+                        }));
                 }
             }
             else
@@ -136,7 +173,20 @@ public partial class MainWindow : Window
     // Called when a left click passes through the hook — auto-send Ctrl+C after delay
     private void OnLeftClickPassed()
     {
-        if (_vm.IsBlockingEnabled) _hooker.Blocking = true;
+        if (_vm.IsBlockingEnabled)
+        {
+            _hooker.Blocking = true;
+            // Safety: a click that produced no clipboard update (ground, stash tab…)
+            // must not leave the block stuck
+            _unblockTimer?.Stop();
+            _unblockTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+            _unblockTimer.Tick += (_, _) =>
+            {
+                _unblockTimer!.Stop();
+                if (!_vm.IsStop) _hooker.Blocking = false;
+            };
+            _unblockTimer.Start();
+        }
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(CtrlCDelayMs) };
         timer.Tick += (_, _) => { timer.Stop(); SendCtrlC(); };
         timer.Start();
@@ -156,7 +206,9 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        SaveSettings();
         NativeMethods.UnregisterHotKey(new WindowInteropHelper(this).Handle, NativeMethods.HOTKEY_TOGGLE);
+        _crafter.Stop();
         _hooker.Dispose();
         _watcher.Dispose();
         base.OnClosed(e);

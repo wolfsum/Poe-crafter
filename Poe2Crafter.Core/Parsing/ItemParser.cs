@@ -2,11 +2,15 @@ using System.Text.RegularExpressions;
 
 namespace Poe2Crafter.Core.Parsing;
 
+// One craftable mod line. Tier comes from the "{ Prefix Modifier ... (Tier: 5) }"
+// annotation when present; 0 = unknown (infer from value ranges).
+public record ParsedModLine(string Text, int Tier);
+
 public record ParsedItem(
     string ItemClass,
     string Rarity,
     int ItemLevel,
-    string[] ModLines   // individual stat lines, ready for ModDatabase.Match()
+    IReadOnlyList<ParsedModLine> Mods
 );
 
 public static class ItemParser
@@ -14,18 +18,22 @@ public static class ItemParser
     private static readonly Regex ItemLevelRegex = new(@"^Item Level:\s*(\d+)", RegexOptions.Compiled);
     private static readonly Regex ItemClassRegex = new(@"^Item Class:\s*(.+)", RegexOptions.Compiled);
     private static readonly Regex RarityRegex    = new(@"^Rarity:\s*(.+)", RegexOptions.Compiled);
-    // Format 2 annotation lines: { Prefix Modifier "Name" (Tier: 3) }
-    private static readonly Regex AnnotationRegex = new(@"^\{.*\}$", RegexOptions.Compiled);
+
+    // Annotation lines from advanced item descriptions:
+    // { Prefix Modifier "Hale" (Tier: 5) — Life }
+    private static readonly Regex AnnotationRegex = new(@"^\{(?<body>.*)\}$", RegexOptions.Compiled);
+    private static readonly Regex TierRegex       = new(@"\(Tier:\s*(?<t>\d+)\)", RegexOptions.Compiled);
 
     // Roll-range hints PoE2 appends after values: "+62(60-80) to maximum Life" → "+62 to maximum Life"
     private static readonly Regex RangeHintRegex = new(@"(?<=\d)\(\d+(?:\.\d+)?-\d+(?:\.\d+)?\)", RegexOptions.Compiled);
 
+    // Plain-copy markers for non-craftable lines (no annotations available)
+    private static readonly string[] SkipMarkers = ["(implicit)", "(enchant)", "(rune)"];
+
     // Lines that are item state markers, not mods
     private static readonly HashSet<string> SkipLines = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Corrupted", "Fractured Item", "Synthesised Item", "Unidentified",
-        "Shaper Item", "Elder Item", "Crusader Item", "Warlord Item",
-        "Hunter Item", "Redeemer Item", "Searing Exarch Item", "Eater of Worlds Item",
+        "Corrupted", "Fractured Item", "Unidentified",
     };
 
     public static ParsedItem? TryParse(string clipboardText)
@@ -34,7 +42,6 @@ public static class ItemParser
 
         var lines = clipboardText.ReplaceLineEndings("\n").Split('\n');
 
-        // Must start with "Item Class:" to be a PoE item
         if (!lines.Any(l => ItemClassRegex.IsMatch(l.Trim()))) return null;
 
         string itemClass = "";
@@ -56,18 +63,57 @@ public static class ItemParser
 
         if (itemLevelIdx < 0) return null;
 
-        // Everything after "Item Level:" line is mods (skip section separators and annotations)
-        var modLines = lines
-            .Skip(itemLevelIdx + 1)
-            .Select(l => RangeHintRegex.Replace(l.Trim(), ""))
-            .Where(l => l.Length > 0
-                     && l != "--------"
-                     && !AnnotationRegex.IsMatch(l)
-                     && !SkipLines.Contains(l))
-            .ToArray();
+        // Walk lines after "Item Level:". With annotations (advanced descriptions) we keep
+        // only Prefix/Suffix/Unique mod lines and read tiers; implicits, enchants and runes
+        // are excluded so they can't false-trigger a STOP.
+        var mods = new List<ParsedModLine>();
+        bool sawAnnotations = false;
+        bool keepCurrent    = false;
+        int  currentTier    = 0;
 
-        if (modLines.Length == 0) return null;
+        foreach (var raw in lines.Skip(itemLevelIdx + 1))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
 
-        return new ParsedItem(itemClass, rarity, itemLevel, modLines);
+            if (line == "--------")
+            {
+                keepCurrent = false; // section break ends the current annotation scope
+                continue;
+            }
+
+            var ann = AnnotationRegex.Match(line);
+            if (ann.Success)
+            {
+                sawAnnotations = true;
+                var body = ann.Groups["body"].Value;
+                keepCurrent = body.Contains("Prefix Modifier") ||
+                              body.Contains("Suffix Modifier") ||
+                              body.Contains("Unique Modifier");
+                var tm = TierRegex.Match(body);
+                currentTier = tm.Success ? int.Parse(tm.Groups["t"].Value) : 0;
+                continue;
+            }
+
+            if (SkipLines.Contains(line)) continue;
+
+            var text = RangeHintRegex.Replace(line, "");
+
+            if (sawAnnotations)
+            {
+                if (keepCurrent)
+                    mods.Add(new ParsedModLine(text, currentTier));
+            }
+            else
+            {
+                // Plain copy without annotations — keep everything except marked lines
+                if (!SkipMarkers.Any(m => text.EndsWith(m, StringComparison.OrdinalIgnoreCase)))
+                    mods.Add(new ParsedModLine(text, 0));
+            }
+        }
+
+        if (mods.Count == 0) return null;
+
+        return new ParsedItem(itemClass, rarity, itemLevel, mods);
     }
 }
