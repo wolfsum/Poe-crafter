@@ -25,6 +25,10 @@ public static class PobModParser
     private static readonly Regex AffixFieldRegex = new(
         @"\baffix\s*=\s*""[^""]*""", RegexOptions.Compiled);
 
+    // First display string inside tradeHashes = { [123] = { "..." } }
+    private static readonly Regex TradeTextRegex = new(
+        @"tradeHashes\s*=\s*\{\s*\[\d+\]\s*=\s*\{\s*""(?<t>[^""]+)""", RegexOptions.Compiled);
+
     private static readonly Regex TierRegex = new(@"(\d+)_?$", RegexOptions.Compiled);
 
     private static readonly Regex RangeExtract = new(
@@ -75,6 +79,21 @@ public static class PobModParser
 
             var tierMatch = TierRegex.Match(id);
             var template  = templates[0];
+
+            // Radius jewel mods store only the granted effect as template;
+            // the real in-game line lives in tradeHashes:
+            // "Small Passive Skills in Radius also grant (1-2)% increased Accuracy Rating"
+            var tradeMatch = TradeTextRegex.Match(body);
+            if (tradeMatch.Success)
+            {
+                var tradeText = tradeMatch.Groups["t"].Value;
+                if (tradeText.Length > template.Length && tradeText.Contains(template, StringComparison.Ordinal))
+                {
+                    template     = tradeText;
+                    templates[0] = tradeText; // keep Templates in sync — group display names use it
+                }
+            }
+
             var (vMin, vMax) = ExtractRanges(template);
 
             results.Add(new ModDefinition

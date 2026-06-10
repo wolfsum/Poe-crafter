@@ -54,9 +54,11 @@ public static class ItemTypeHelper
             [JewelType.Ruby]             = "Ruby (Str)",
             [JewelType.Emerald]          = "Emerald (Dex)",
             [JewelType.Sapphire]         = "Sapphire (Int)",
+            [JewelType.Diamond]          = "Diamond (all)",
             [JewelType.TimeLostRuby]     = "Time-Lost Ruby",
             [JewelType.TimeLostEmerald]  = "Time-Lost Emerald",
             [JewelType.TimeLostSapphire] = "Time-Lost Sapphire",
+            [JewelType.TimeLostDiamond]  = "Time-Lost Diamond",
         };
 
     // Armour slots that need a base type selection
@@ -133,9 +135,11 @@ public static class ItemTypeHelper
         JewelType.Ruby             => ["strjewel"],
         JewelType.Emerald          => ["dexjewel"],
         JewelType.Sapphire         => ["intjewel"],
+        JewelType.Diamond          => ["strjewel", "dexjewel", "intjewel"],
         JewelType.TimeLostRuby     => ["str_radius_jewel", "radius_jewel"],
         JewelType.TimeLostEmerald  => ["dex_radius_jewel", "radius_jewel"],
         JewelType.TimeLostSapphire => ["int_radius_jewel", "radius_jewel"],
+        JewelType.TimeLostDiamond  => ["str_radius_jewel", "dex_radius_jewel", "int_radius_jewel", "radius_jewel"],
         _                          => [],
     };
 }
