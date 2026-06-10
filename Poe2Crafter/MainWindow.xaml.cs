@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel vm)
     {
         InitializeComponent();
+        Title = $"PoE2 Crafter v{UpdateService.Current.ToString(3)}";
         DataContext = _vm = vm;
         _hooker.ClickPassed       += OnLeftClickPassed;
         _hooker.PositionCaptured  += OnPositionCaptured;
