@@ -17,6 +17,9 @@ public static class ItemParser
     // Format 2 annotation lines: { Prefix Modifier "Name" (Tier: 3) }
     private static readonly Regex AnnotationRegex = new(@"^\{.*\}$", RegexOptions.Compiled);
 
+    // Roll-range hints PoE2 appends after values: "+62(60-80) to maximum Life" → "+62 to maximum Life"
+    private static readonly Regex RangeHintRegex = new(@"(?<=\d)\(\d+(?:\.\d+)?-\d+(?:\.\d+)?\)", RegexOptions.Compiled);
+
     // Lines that are item state markers, not mods
     private static readonly HashSet<string> SkipLines = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -56,7 +59,7 @@ public static class ItemParser
         // Everything after "Item Level:" line is mods (skip section separators and annotations)
         var modLines = lines
             .Skip(itemLevelIdx + 1)
-            .Select(l => l.Trim())
+            .Select(l => RangeHintRegex.Replace(l.Trim(), ""))
             .Where(l => l.Length > 0
                      && l != "--------"
                      && !AnnotationRegex.IsMatch(l)

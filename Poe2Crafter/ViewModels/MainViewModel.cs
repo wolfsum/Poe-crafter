@@ -272,6 +272,7 @@ public class MainViewModel : ViewModelBase
             JewelTypeVisibility = Visibility.Collapsed;
         }
         Notify(nameof(SelectedBaseOption));
+        Notify(nameof(SelectedJewelType));
     }
 
     private void RefreshModGroups()

@@ -51,13 +51,12 @@ public static class ItemTypeHelper
     public static readonly IReadOnlyDictionary<JewelType, string> JewelTypeDisplayNames =
         new Dictionary<JewelType, string>
         {
-            [JewelType.None]      = "—",
-            [JewelType.Crimson]   = "Crimson Jewel",
-            [JewelType.Viridian]  = "Viridian Jewel",
-            [JewelType.Azure]     = "Azure Jewel",
-            [JewelType.Golden]    = "Golden Jewel",
-            [JewelType.Prismatic] = "Prismatic Jewel",
-            [JewelType.Cluster]   = "Cluster Jewel",
+            [JewelType.Ruby]             = "Ruby (Str)",
+            [JewelType.Emerald]          = "Emerald (Dex)",
+            [JewelType.Sapphire]         = "Sapphire (Int)",
+            [JewelType.TimeLostRuby]     = "Time-Lost Ruby",
+            [JewelType.TimeLostEmerald]  = "Time-Lost Emerald",
+            [JewelType.TimeLostSapphire] = "Time-Lost Sapphire",
         };
 
     // Armour slots that need a base type selection
@@ -128,14 +127,15 @@ public static class ItemTypeHelper
         _                 => [],
     };
 
+    // Tags from PoB2 ModJewel.lua weightKeys
     private static IEnumerable<string> JewelTypeTags(JewelType jewelType) => jewelType switch
     {
-        JewelType.Crimson   => ["crimson_jewel"],
-        JewelType.Viridian  => ["viridian_jewel"],
-        JewelType.Azure     => ["azure_jewel"],
-        JewelType.Golden    => ["golden_jewel"],
-        JewelType.Prismatic => ["prismatic_jewel"],
-        JewelType.Cluster   => ["cluster_jewel"],
-        _                   => [],
+        JewelType.Ruby             => ["strjewel"],
+        JewelType.Emerald          => ["dexjewel"],
+        JewelType.Sapphire         => ["intjewel"],
+        JewelType.TimeLostRuby     => ["str_radius_jewel", "radius_jewel"],
+        JewelType.TimeLostEmerald  => ["dex_radius_jewel", "radius_jewel"],
+        JewelType.TimeLostSapphire => ["int_radius_jewel", "radius_jewel"],
+        _                          => [],
     };
 }

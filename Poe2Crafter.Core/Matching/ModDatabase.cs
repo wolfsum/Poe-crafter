@@ -14,9 +14,11 @@ public class ModDatabase
     public ModDatabase(IEnumerable<ModDefinition> mods)
     {
         AllMods = mods.ToList();
+        // No RegexOptions.Compiled: with thousands of patterns the JIT cost on first
+        // match caused a multi-second freeze; interpreted matching is fast enough
         _entries = AllMods
             .Select(m => (
-                new Regex(m.MatchRegex, RegexOptions.Compiled | RegexOptions.IgnoreCase),
+                new Regex(m.MatchRegex, RegexOptions.IgnoreCase),
                 m))
             .ToList();
     }
