@@ -49,6 +49,27 @@ public class MainViewModel : ViewModelBase
         private set => Set(ref _baseVisibility, value);
     }
 
+    // ── Jewel type ────────────────────────────────────────────────────
+    public IReadOnlyList<JewelTypeOption> JewelTypeOptions { get; } =
+        ItemTypeHelper.JewelTypeDisplayNames
+            .OrderBy(kv => kv.Value)
+            .Select(kv => new JewelTypeOption(kv.Key, kv.Value))
+            .ToList();
+
+    private JewelTypeOption? _selectedJewelType;
+    public JewelTypeOption? SelectedJewelType
+    {
+        get => _selectedJewelType;
+        set { Set(ref _selectedJewelType, value); RefreshModGroups(); }
+    }
+
+    private Visibility _jewelTypeVisibility = Visibility.Collapsed;
+    public Visibility JewelTypeVisibility
+    {
+        get => _jewelTypeVisibility;
+        private set => Set(ref _jewelTypeVisibility, value);
+    }
+
     // ── Mod groups ────────────────────────────────────────────────────
     private string _filter = "";
     public string Filter
@@ -234,11 +255,21 @@ public class MainViewModel : ViewModelBase
                 BaseOptions.Add(new BaseOption(kv.Key, kv.Value));
             _selectedBaseOption = BaseOptions.FirstOrDefault();
             BaseVisibility = Visibility.Visible;
+            JewelTypeVisibility = Visibility.Collapsed;
+        }
+        else if (ItemTypeHelper.JewelSlots.Contains(slot))
+        {
+            _selectedBaseOption = null;
+            BaseVisibility = Visibility.Collapsed;
+            _selectedJewelType = JewelTypeOptions.FirstOrDefault();
+            JewelTypeVisibility = Visibility.Visible;
         }
         else
         {
             _selectedBaseOption = null;
             BaseVisibility = Visibility.Collapsed;
+            _selectedJewelType = null;
+            JewelTypeVisibility = Visibility.Collapsed;
         }
         Notify(nameof(SelectedBaseOption));
     }
@@ -247,7 +278,8 @@ public class MainViewModel : ViewModelBase
     {
         var slot = _selectedSlotOption?.Slot ?? ItemSlot.Ring;
         var armourBase = _selectedBaseOption?.Base ?? ArmourBase.None;
-        _allGroups = _db.GetGroups(slot, armourBase);
+        var jewelType = _selectedJewelType?.Type ?? JewelType.None;
+        _allGroups = _db.GetGroups(slot, armourBase, jewelType);
         ApplyFilter();
     }
 
@@ -286,7 +318,10 @@ public class MainViewModel : ViewModelBase
 
     public void OnClipboardChanged(string clipboardText)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var item = ItemParser.TryParse(clipboardText);
+        sw.Stop();
+        System.Diagnostics.Debug.WriteLine($"[Parse] {sw.ElapsedMilliseconds}ms");
 
         // Update hash even on parse fail — null hash prevents false matches in AutoCrafter
         LastItemHash = item?.ModLines?.Length > 0 ? string.Join("|", item.ModLines) : "";
@@ -302,8 +337,11 @@ public class MainViewModel : ViewModelBase
         // Ignore partial/unrelated clipboard content — keep showing last known status
         if (item is null) return;
 
+        var sw2 = System.Diagnostics.Stopwatch.StartNew();
         var conditions = TargetMods.Select(t => t.ToCondition()).ToList();
         var result     = _matcher.Check(item, conditions);
+        sw2.Stop();
+        System.Diagnostics.Debug.WriteLine($"[Match] {sw2.ElapsedMilliseconds}ms");
 
         MatchedLines.Clear();
         StatusVisibility = Visibility.Visible;

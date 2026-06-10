@@ -95,6 +95,11 @@
                       ItemsSource="{Binding BaseOptions}"
                       SelectedItem="{Binding SelectedBaseOption}"
                       Visibility="{Binding BaseVisibility}"/>
+
+            <ComboBox Grid.Column="2"
+                      ItemsSource="{Binding JewelTypeOptions}"
+                      SelectedItem="{Binding SelectedJewelType}"
+                      Visibility="{Binding JewelTypeVisibility}"/>
         </Grid>
 
         <!-- Filter -->

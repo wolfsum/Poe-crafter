@@ -11,3 +11,8 @@ public record BaseOption(ArmourBase Base, string Name)
 {
     public override string ToString() => Name;
 }
+
+public record JewelTypeOption(JewelType Type, string Name)
+{
+    public override string ToString() => Name;
+}

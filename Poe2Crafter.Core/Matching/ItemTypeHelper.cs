@@ -13,6 +13,7 @@ public static class ItemTypeHelper
             [ItemSlot.Talisman]  = "Talisman",
             [ItemSlot.Quiver]    = "Quiver",
             [ItemSlot.Focus]     = "Focus",
+            [ItemSlot.Jewel]     = "Jewel",
             [ItemSlot.Helmet]    = "Helmet",
             [ItemSlot.Gloves]    = "Gloves",
             [ItemSlot.Boots]     = "Boots",
@@ -47,6 +48,18 @@ public static class ItemTypeHelper
             [ArmourBase.All]    = "Armour / Evasion / ES",
         };
 
+    public static readonly IReadOnlyDictionary<JewelType, string> JewelTypeDisplayNames =
+        new Dictionary<JewelType, string>
+        {
+            [JewelType.None]      = "—",
+            [JewelType.Crimson]   = "Crimson Jewel",
+            [JewelType.Viridian]  = "Viridian Jewel",
+            [JewelType.Azure]     = "Azure Jewel",
+            [JewelType.Golden]    = "Golden Jewel",
+            [JewelType.Prismatic] = "Prismatic Jewel",
+            [JewelType.Cluster]   = "Cluster Jewel",
+        };
+
     // Armour slots that need a base type selection
     public static readonly IReadOnlySet<ItemSlot> ArmourSlots = new HashSet<ItemSlot>
     {
@@ -54,12 +67,19 @@ public static class ItemTypeHelper
         ItemSlot.BodyArmour, ItemSlot.Shield,
     };
 
-    public static IReadOnlySet<string> GetTags(ItemSlot slot, ArmourBase armourBase = ArmourBase.None)
+    // Jewel slot that needs a type selection
+    public static readonly IReadOnlySet<ItemSlot> JewelSlots = new HashSet<ItemSlot> { ItemSlot.Jewel };
+
+    public static IReadOnlySet<string> GetTags(ItemSlot slot, ArmourBase armourBase = ArmourBase.None, JewelType jewelType = JewelType.None)
     {
         var tags = new HashSet<string>(SlotTags(slot));
 
         if (ArmourSlots.Contains(slot) && armourBase != ArmourBase.None)
             foreach (var t in ArmourBaseTags(armourBase))
+                tags.Add(t);
+
+        if (JewelSlots.Contains(slot) && jewelType != JewelType.None)
+            foreach (var t in JewelTypeTags(jewelType))
                 tags.Add(t);
 
         return tags;
@@ -73,6 +93,7 @@ public static class ItemTypeHelper
         ItemSlot.Talisman   => ["talisman"],
         ItemSlot.Quiver     => ["quiver"],
         ItemSlot.Focus      => ["focus"],
+        ItemSlot.Jewel      => ["jewel"],
         ItemSlot.Helmet     => ["helmet", "armour"],
         ItemSlot.Gloves     => ["gloves", "armour"],
         ItemSlot.Boots      => ["boots", "armour"],
@@ -105,5 +126,16 @@ public static class ItemTypeHelper
         ArmourBase.DexInt => ["dex_int_armour"],
         ArmourBase.All    => ["str_dex_int_armour"],
         _                 => [],
+    };
+
+    private static IEnumerable<string> JewelTypeTags(JewelType jewelType) => jewelType switch
+    {
+        JewelType.Crimson   => ["crimson_jewel"],
+        JewelType.Viridian  => ["viridian_jewel"],
+        JewelType.Azure     => ["azure_jewel"],
+        JewelType.Golden    => ["golden_jewel"],
+        JewelType.Prismatic => ["prismatic_jewel"],
+        JewelType.Cluster   => ["cluster_jewel"],
+        _                   => [],
     };
 }
