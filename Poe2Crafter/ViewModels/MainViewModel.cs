@@ -223,6 +223,19 @@ public class MainViewModel : ViewModelBase
     public RelayCommand SetCurrencyCommand { get; }
     public RelayCommand SetItemCommand     { get; }
 
+    // ── Update ────────────────────────────────────────────────────────
+    private string? _updateText;
+    public string? UpdateText
+    {
+        get => _updateText;
+        set { Set(ref _updateText, value); Notify(nameof(UpdateVisibility)); }
+    }
+
+    public Visibility UpdateVisibility =>
+        _updateText is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public RelayCommand UpdateCommand { get; } = new(() => { }); // handled in MainWindow via Executed
+
     // ── Commands ──────────────────────────────────────────────────────
     public RefreshableCommand AddTargetCommand { get; }
     public RelayCommand<TargetModViewModel> RemoveTargetCommand { get; }

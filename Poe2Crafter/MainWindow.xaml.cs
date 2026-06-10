@@ -29,8 +29,37 @@ public partial class MainWindow : Window
         _vm.PropertyChanged       += OnVmPropertyChanged;
         _vm.SetCurrencyCommand.Executed += () => _calibratingCurrency = true;
         _vm.SetItemCommand.Executed     += () => _calibratingCurrency = false;
+        _vm.UpdateCommand.Executed      += OnUpdateRequested;
 
         LoadSettings();
+
+        UpdateService.CleanupOldBinary();
+        _ = CheckForUpdateAsync();
+    }
+
+    // ── Updates ───────────────────────────────────────────────────────
+    private UpdateService.UpdateInfo? _pendingUpdate;
+
+    private async Task CheckForUpdateAsync()
+    {
+        _pendingUpdate = await UpdateService.CheckAsync();
+        if (_pendingUpdate != null)
+            _vm.UpdateText = $"⬆ Update to v{_pendingUpdate.Version.ToString(3)}";
+    }
+
+    private async void OnUpdateRequested()
+    {
+        if (_pendingUpdate is null) return;
+        _vm.UpdateText = "Downloading…";
+        try
+        {
+            await UpdateService.DownloadAndApplyAsync(_pendingUpdate);
+        }
+        catch (Exception ex)
+        {
+            _vm.UpdateText = "Update failed";
+            _vm.ShowNotice($"Update error: {ex.Message}");
+        }
     }
 
     private void LoadSettings()
