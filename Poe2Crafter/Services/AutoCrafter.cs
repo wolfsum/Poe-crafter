@@ -12,16 +12,16 @@ public sealed class AutoCrafter
 
     public bool IsRunning => _cts is { IsCancellationRequested: false };
 
-    public void Start(Func<bool> shouldStop, Func<string?> getItemHash, Action<string?> onStopped)
+    public void Start(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq, Action<string?> onStopped)
     {
         _cts = new CancellationTokenSource();
-        Task.Run(() => RunLoop(shouldStop, getItemHash, onStopped, _cts.Token));
+        Task.Run(() => RunLoop(shouldStop, getItemHash, getEvalSeq, onStopped, _cts.Token));
     }
 
     public void Stop() => _cts?.Cancel();
 
     // ── Main loop ─────────────────────────────────────────────────────
-    private async Task RunLoop(Func<bool> shouldStop, Func<string?> getItemHash, Action<string?> onStopped, CancellationToken ct)
+    private async Task RunLoop(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq, Action<string?> onStopped, CancellationToken ct)
     {
         string? stopReason = null;
         try
@@ -39,34 +39,62 @@ public sealed class AutoCrafter
             // Pick up currency stack once at start (right-click puts the stack on cursor)
             await MoveSmooth(GetCursor(), CurrencyPos, ct);
             await Delay(60, 20, ct);
-            Click(CurrencyPos, right: true);
+            await ClickAsync(right: true, ct);
             await Delay(200, 50, ct);
 
             while (!ct.IsCancellationRequested)
             {
                 if (!IsPoE2Active()) { await Delay(300, 0, ct); continue; }
 
-                // Click item (with slight position jitter every time)
+                // Shift+click applies currency repeatedly without dropping it
+                // from the cursor (plain click would pick the item up instead)
                 var target = Jitter(ItemPos, 4);
                 await MoveSmooth(GetCursor(), target, ct);
                 await Delay(Rng(40, 80), 0, ct);
-                Click(target, right: false);
+
+                SendShift(down: true);
+                try
+                {
+                    await Delay(Rng(30, 60), 0, ct);
+                    await ClickAsync(right: false, ct);
+                    await Delay(Rng(30, 60), 0, ct);
+                }
+                finally { SendShift(down: false); } // never leave Shift stuck
 
                 // Wait for PoE2 to process the orb use
                 await Delay(Rng(130, 180), 15, ct);
 
-                // Copy item stats
+                // Copy item stats and wait until the app actually evaluated the
+                // clipboard (PoE2 fires several clipboard events per copy — fixed
+                // delays raced and could skip the evaluation)
+                int seqBefore = getEvalSeq();
                 SendCtrlC();
 
-                // Wait for clipboard + VM to process
-                await Delay(Rng(220, 280), 30, ct);
+                int waitedMs = 0;
+                while (!ct.IsCancellationRequested && getEvalSeq() == seqBefore && waitedMs < 1500)
+                {
+                    await Task.Delay(50, ct);
+                    waitedMs += 50;
+                }
+                bool evaluated = getEvalSeq() != seqBefore;
+                await Delay(Rng(40, 80), 0, ct); // let UI state settle
 
                 if (shouldStop()) break; // target hit — STOP panel already shown
+
+                if (!evaluated)
+                {
+                    if (++failedCycles >= 5)
+                    {
+                        stopReason = "Предмет не считывается — проверь позицию Item";
+                        break;
+                    }
+                    continue;
+                }
 
                 // Safety: detect parse failures (empty hash) and item hash unchanged
                 var hash = getItemHash();
                 failedCycles = (hash == null || hash == "") ? failedCycles + 1 : 0;
-                if (failedCycles >= 10)
+                if (failedCycles >= 5)
                 {
                     stopReason = "Не читается предмет — проверь позицию Item";
                     break;
@@ -114,17 +142,35 @@ public sealed class AutoCrafter
         }
     }
 
-    private static void Click(NativeMethods.POINT p, bool right)
+    // Press and release with a human-like hold — down+up in one batch can be
+    // dropped by the game's per-frame input polling
+    private static async Task ClickAsync(bool right, CancellationToken ct)
     {
-        uint down = right ? NativeMethods.MOUSEEVENTF_RIGHTDOWN : NativeMethods.MOUSEEVENTF_LEFTDOWN;
-        uint up   = right ? NativeMethods.MOUSEEVENTF_RIGHTUP   : NativeMethods.MOUSEEVENTF_LEFTUP;
+        SendButton(right, down: true);
+        await Delay(Rng(35, 75), 0, ct);
+        SendButton(right, down: false);
+    }
 
+    private static void SendButton(bool right, bool down)
+    {
+        uint flag = right
+            ? (down ? NativeMethods.MOUSEEVENTF_RIGHTDOWN : NativeMethods.MOUSEEVENTF_RIGHTUP)
+            : (down ? NativeMethods.MOUSEEVENTF_LEFTDOWN  : NativeMethods.MOUSEEVENTF_LEFTUP);
+        var inputs = new[] { MouseInput(flag) };
+        NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+    }
+
+    private static void SendShift(bool down)
+    {
         var inputs = new NativeMethods.INPUT[]
         {
-            MouseInput(down),
-            MouseInput(up),
+            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new()
+            {
+                wVk     = NativeMethods.VK_SHIFT,
+                dwFlags = down ? 0 : NativeMethods.KEYEVENTF_KEYUP,
+            } } },
         };
-        NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
     }
 
     private static NativeMethods.INPUT MouseInput(uint flags) => new()

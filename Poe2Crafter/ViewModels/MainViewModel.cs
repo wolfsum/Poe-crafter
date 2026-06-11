@@ -194,6 +194,11 @@ public class MainViewModel : ViewModelBase
 
     public string? LastItemHash { get; private set; }
 
+    // Bumped after every processed clipboard event — AutoCrafter syncs on this
+    // instead of fixed delays (PoE2 fires several clipboard events per copy)
+    private int _evalSeq;
+    public int EvalSeq => _evalSeq;
+
     private bool _isBlockingEnabled = true;
     public bool IsBlockingEnabled
     {
@@ -357,46 +362,53 @@ public class MainViewModel : ViewModelBase
 
     public void OnClipboardChanged(string clipboardText)
     {
-        var item = ItemParser.TryParse(clipboardText);
-
-        // Update hash even on parse fail — empty hash prevents false matches in AutoCrafter
-        LastItemHash = item is { Mods.Count: > 0 }
-            ? string.Join("|", item.Mods.Select(m => m.Text))
-            : "";
-
-        // Only process clipboard when actively running
-        if (!IsRunning || TargetMods.Count == 0)
+        try
         {
-            StatusVisibility = Visibility.Collapsed;
-            IsStop = false;
-            return;
+            var item = ItemParser.TryParse(clipboardText);
+
+            // Update hash even on parse fail — empty hash prevents false matches in AutoCrafter
+            LastItemHash = item is { Mods.Count: > 0 }
+                ? string.Join("|", item.Mods.Select(m => m.Text))
+                : "";
+
+            // Only process clipboard when actively running
+            if (!IsRunning || TargetMods.Count == 0)
+            {
+                StatusVisibility = Visibility.Collapsed;
+                IsStop = false;
+                return;
+            }
+
+            // Ignore partial/unrelated clipboard content — keep showing last known status
+            if (item is null) return;
+
+            var conditions = TargetMods.Select(t => t.ToCondition()).ToList();
+            var result     = _matcher.Check(item, conditions);
+
+            MatchedLines.Clear();
+            StatusVisibility = Visibility.Visible;
+            IsStop = result.AllMatched;
+
+            if (result.AllMatched)
+            {
+                StatusText  = "⛔  STOP";
+                StatusBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
+                foreach (var h in result.Hits)
+                    MatchedLines.Add($"✓  {h.Target.DisplayName}  T{h.Tier} [{h.Value}]");
+            }
+            else
+            {
+                StatusText  = "✓  GO — keep rolling";
+                StatusBrush = new SolidColorBrush(Color.FromRgb(0x27, 0xAE, 0x60));
+                foreach (var h in result.Hits)
+                    MatchedLines.Add($"✓  {h.Target.DisplayName}  T{h.Tier} [{h.Value}]");
+                foreach (var m in result.Misses)
+                    MatchedLines.Add($"✗  {m.DisplayName}");
+            }
         }
-
-        // Ignore partial/unrelated clipboard content — keep showing last known status
-        if (item is null) return;
-
-        var conditions = TargetMods.Select(t => t.ToCondition()).ToList();
-        var result     = _matcher.Check(item, conditions);
-
-        MatchedLines.Clear();
-        StatusVisibility = Visibility.Visible;
-        IsStop = result.AllMatched;
-
-        if (result.AllMatched)
+        finally
         {
-            StatusText  = "⛔  STOP";
-            StatusBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
-            foreach (var h in result.Hits)
-                MatchedLines.Add($"✓  {h.Target.DisplayName}  T{h.Tier} [{h.Value}]");
-        }
-        else
-        {
-            StatusText  = "✓  GO — keep rolling";
-            StatusBrush = new SolidColorBrush(Color.FromRgb(0x27, 0xAE, 0x60));
-            foreach (var h in result.Hits)
-                MatchedLines.Add($"✓  {h.Target.DisplayName}  T{h.Tier} [{h.Value}]");
-            foreach (var m in result.Misses)
-                MatchedLines.Add($"✗  {m.DisplayName}");
+            _evalSeq++; // signal AutoCrafter: clipboard processed, IsStop/hash are fresh
         }
     }
 

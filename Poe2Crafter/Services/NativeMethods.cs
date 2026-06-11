@@ -76,6 +76,7 @@ public static class NativeMethods
     public const uint INPUT_KEYBOARD    = 1;
     public const uint KEYEVENTF_KEYUP   = 0x0002;
     public const ushort VK_CONTROL      = 0x11;
+    public const ushort VK_SHIFT        = 0x10;
     public const ushort VK_C            = 0x43;
 
     [StructLayout(LayoutKind.Sequential)]

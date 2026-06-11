@@ -188,6 +188,7 @@ public partial class MainWindow : Window
                     _crafter.Start(
                         () => _vm.IsStop,
                         () => _vm.LastItemHash,
+                        () => _vm.EvalSeq,
                         reason => Dispatcher.Invoke(() =>
                         {
                             _vm.IsRunning = false;
