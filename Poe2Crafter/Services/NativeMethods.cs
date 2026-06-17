@@ -73,8 +73,13 @@ public static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+    [DllImport("user32.dll")]
+    public static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
     public const uint INPUT_KEYBOARD    = 1;
     public const uint KEYEVENTF_KEYUP   = 0x0002;
+    public const uint KEYEVENTF_SCANCODE= 0x0008;
+    public const uint MAPVK_VK_TO_VSC   = 0;
     public const ushort VK_CONTROL      = 0x11;
     public const ushort VK_SHIFT        = 0x10;
     public const ushort VK_C            = 0x43;

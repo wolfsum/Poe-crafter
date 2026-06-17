@@ -52,14 +52,14 @@ public sealed class AutoCrafter
                 await MoveSmooth(GetCursor(), target, ct);
                 await Delay(Rng(40, 80), 0, ct);
 
-                SendShift(down: true);
                 try
                 {
-                    await Delay(Rng(30, 60), 0, ct);
+                    ShiftDown();
+                    await Delay(Rng(40, 70), 0, ct);   // let the game register Shift held
                     await ClickAsync(right: false, ct);
-                    await Delay(Rng(30, 60), 0, ct);
+                    await Delay(Rng(40, 70), 0, ct);
                 }
-                finally { SendShift(down: false); } // never leave Shift stuck
+                finally { ShiftUp(); } // never leave Shift stuck (Ctrl+C must be Shift-free)
 
                 // Wait for PoE2 to process the orb use
                 await Delay(Rng(130, 180), 15, ct);
@@ -116,7 +116,11 @@ public sealed class AutoCrafter
             }
         }
         catch (OperationCanceledException) { }
-        finally { onStopped(stopReason); }
+        finally
+        {
+            ShiftUp(); // safety: never leave Shift physically held after stop
+            onStopped(stopReason);
+        }
     }
 
     // ── Mouse helpers ─────────────────────────────────────────────────
@@ -160,14 +164,23 @@ public sealed class AutoCrafter
         NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
     }
 
-    private static void SendShift(bool down)
+    private bool _shiftHeld;
+
+    private void ShiftDown() { if (!_shiftHeld) { SendShiftScan(true);  _shiftHeld = true;  } }
+    private void ShiftUp()   { if (_shiftHeld) { SendShiftScan(false); _shiftHeld = false; } }
+
+    // Shift as a scan-code event — PoE2 reads raw input and ignores a VK-only
+    // modifier held across a mouse click (the click then quick-moves the item)
+    private static void SendShiftScan(bool down)
     {
+        ushort scan = (ushort)NativeMethods.MapVirtualKey(NativeMethods.VK_SHIFT, NativeMethods.MAPVK_VK_TO_VSC);
         var inputs = new NativeMethods.INPUT[]
         {
             new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new()
             {
-                wVk     = NativeMethods.VK_SHIFT,
-                dwFlags = down ? 0 : NativeMethods.KEYEVENTF_KEYUP,
+                wVk     = 0,
+                wScan   = scan,
+                dwFlags = NativeMethods.KEYEVENTF_SCANCODE | (down ? 0 : NativeMethods.KEYEVENTF_KEYUP),
             } } },
         };
         NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
