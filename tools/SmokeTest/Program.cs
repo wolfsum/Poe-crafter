@@ -1,106 +1,79 @@
+using Poe2Crafter.Core.Games;
 using Poe2Crafter.Core.Matching;
 using Poe2Crafter.Core.Models;
 using Poe2Crafter.Core.Parsing;
 
-var dataDir = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-    "Path of Building Community (PoE2)", "Data");
+var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-var mods = new List<ModDefinition>();
-foreach (var f in new[] { "ModItem.lua", "ModJewel.lua" })
-    mods.AddRange(PobModParser.ParseFile(Path.Combine(dataDir, f)));
-mods.AddRange(Poe2Crafter.Core.Data.TabletMods.All);
-
-var db = new ModDatabase(mods);
-Console.WriteLine($"Total mods loaded: {mods.Count}");
-
-foreach (var tt in new[] { TabletType.Irradiated, TabletType.Breach, TabletType.Overseer })
+foreach (var profile in GameProfiles.All)
 {
-    var groups = db.GetGroups(ItemSlot.Tablet, tabletType: tt);
-    Console.WriteLine($"=== {tt} Tablet: {groups.Count} groups ===");
-    foreach (var g in groups.Take(3)) Console.WriteLine($"  {g.DisplayName}");
-}
+    Console.WriteLine($"\n════════ {profile.Name} ({profile.Key}) ════════");
+    var dataDir = Path.Combine(appData, profile.PobFolderName, "Data");
+    if (!Directory.Exists(dataDir)) { Console.WriteLine($"  !! PoB data not found: {dataDir}"); continue; }
 
-var tabletClip = """
-Item Class: Tablet
-Rarity: Magic
-Teeming Breach Tablet of Plenty
---------
-10 uses remaining
---------
-Item Level: 79
---------
-{ Prefix Modifier "Teeming" (Tier: 1) }
-Map has 35(30-40)% increased Magic Monsters
-{ Suffix Modifier "of the Horde" (Tier: 1) }
-Breaches in Map have 12(5-15)% increased Monster density
---------
-Adds an Otherworldy Breach to a Map
-""";
-var titem = ItemParser.TryParse(tabletClip);
-Console.WriteLine($"=== Tablet clipboard: {(titem is null ? "NULL!" : $"{titem.Mods.Count} mods")} ===");
-if (titem != null)
-    foreach (var m in titem.Mods)
-        Console.WriteLine($"  '{m.Text}' -> {db.Match(m.Text).Count} match(es)");
+    var mods = new List<ModDefinition>();
+    foreach (var f in profile.ModFiles)
+    {
+        var p = Path.Combine(dataDir, f);
+        if (File.Exists(p)) mods.AddRange(PobModParser.ParseFile(p));
+        else Console.WriteLine($"  !! missing {f}");
+    }
+    mods.AddRange(profile.EmbeddedMods);
 
-foreach (var jt in new[] { JewelType.Ruby, JewelType.Emerald, JewelType.Sapphire, JewelType.Diamond,
-                           JewelType.TimeLostRuby, JewelType.TimeLostEmerald, JewelType.TimeLostSapphire, JewelType.TimeLostDiamond })
-{
-    var groups = db.GetGroups(ItemSlot.Jewel, jewelType: jt);
-    Console.WriteLine($"\n=== {jt}: {groups.Count} groups ===");
-    foreach (var g in groups.Take(4))
-        Console.WriteLine($"  {g.DisplayName}");
-}
+    var db = new ModDatabase(mods);
+    Console.WriteLine($"Mods loaded: {mods.Count}, slots: {profile.Slots.Count}");
 
-// Simulate real PoE2 clipboard: a Time-Lost Emerald with range hints
-var clip = """
-Item Class: Jewels
+    foreach (var slot in profile.Slots)
+    {
+        var sel = new SlotSelection(slot,
+            profile.ShowBaseFor(slot) ? ArmourBase.Str : ArmourBase.None,
+            profile.ShowJewelTypeFor(slot) ? profile.JewelTypeDisplayNames.Keys.First() : JewelType.None,
+            profile.ShowTabletTypeFor(slot) ? profile.TabletTypeDisplayNames.Keys.First() : TabletType.None);
+        var n = db.GetGroups(profile, sel).Count;
+        var flag = n == 0 ? "  !! ZERO" : "";
+        Console.WriteLine($"  {profile.SlotDisplayNames[slot],-16} {n,4} groups{flag}");
+    }
+
+    if (profile.Key == "poe1")
+    {
+        // Influence narrows/extends the pool
+        var plain   = db.GetGroups(profile, new SlotSelection(ItemSlot.Amulet)).Count;
+        var shaper  = db.GetGroups(profile, new SlotSelection(ItemSlot.Amulet, Influence: Influence.Shaper)).Count;
+        var hunter  = db.GetGroups(profile, new SlotSelection(ItemSlot.Amulet, Influence: Influence.Hunter)).Count;
+        Console.WriteLine($"\n  Amulet plain={plain}  +Shaper={shaper}  +Hunter={hunter} (influences must add groups)");
+
+        // PoE1 clipboard sample: rare amulet with a shaper mod, tier annotations
+        var clip = """
+Item Class: Amulets
 Rarity: Rare
-Entropy Bliss
-Time-Lost Emerald
+Gale Locket
+Onyx Amulet
 --------
-Radius: Small
+Requirements:
+Level: 60
 --------
-Item Level: 81
+Item Level: 84
 --------
-{ Prefix Modifier "Flowing" (Tier: 1) }
-Notable Passive Skills in Radius also grant 5(3-7)% increased Critical Hit Chance
-{ Suffix Modifier "of Precision" (Tier: 1) }
-Small Passive Skills in Radius also grant 2(1-2)% increased Accuracy Rating
+{ Implicit Modifier — Attribute }
++16 to all Attributes (implicit)
 --------
-Place into an allocated Jewel Socket on the Passive Skill Tree.
-""";
-
-PrintParse("Time-Lost Emerald (annotated)", clip);
-
-// Rare with annotations, implicit, enchant and rune — only prefix/suffix must count
-var clip2 = """
-Item Class: Body Armours
-Rarity: Rare
-Doom Shelter
-Full Plate
---------
-Armour: 270 (augmented)
---------
-Item Level: 82
---------
-{ Implicit Modifier }
-+25(20-30) to Spirit (implicit)
---------
-{ Rune Modifier }
-+12% to Fire Resistance (rune)
-{ Prefix Modifier "Hale" (Tier: 5) — Life }
-+62(60-80) to maximum Life
-{ Suffix Modifier "of the Span" (Tier: 3) — Elemental, Resistance }
-+10(5-10)% to all Elemental Resistances
+{ Prefix Modifier "Rotund" (Tier: 4) — Life }
++70(65-74) to maximum Life
+{ Suffix Modifier "of the Gale" (Tier: 2) — Elemental, Cold, Resistance }
++41(36-41)% to Cold Resistance
 --------
 Corrupted
 """;
+        var item = ItemParser.TryParse(clip);
+        Console.WriteLine($"\n  PoE1 clipboard: {(item is null ? "NULL!" : $"{item.Mods.Count} mods (implicit excluded)")}");
+        if (item != null)
+            foreach (var m in item.Mods)
+                Console.WriteLine($"    '{m.Text}' (annTier={m.Tier}) -> {db.Match(m.Text).Count} match(es)");
+    }
 
-PrintParse("Rare armour (annotated, implicit+rune)", clip2);
-
-// Plain copy without annotations (fallback path)
-var clip3 = """
+    if (profile.Key == "poe2")
+    {
+        var clip = """
 Item Class: Body Armours
 Rarity: Rare
 Doom Shelter
@@ -108,22 +81,13 @@ Full Plate
 --------
 Item Level: 82
 --------
-+12% to Fire Resistance (rune)
-+62 to maximum Life
+{ Prefix Modifier "Hale" (Tier: 5) — Life }
++62(60-80) to maximum Life
 """;
-
-PrintParse("Rare armour (plain copy)", clip3);
-
-void PrintParse(string title, string text)
-{
-    var item = ItemParser.TryParse(text);
-    Console.WriteLine($"\n=== {title}: {(item is null ? "NULL!" : $"{item.Mods.Count} mod lines")} ===");
-    if (item is null) return;
-    foreach (var mod in item.Mods)
-    {
-        var matches = db.Match(mod.Text);
-        Console.WriteLine($"  '{mod.Text}' (annTier={mod.Tier}) -> {matches.Count} match(es)");
-        foreach (var m in matches.Take(3))
-            Console.WriteLine($"      [{m.Mod.Group}] dbT{m.Mod.Tier} {m.Mod.Template}");
+        var item = ItemParser.TryParse(clip);
+        Console.WriteLine($"\n  PoE2 clipboard: {(item is null ? "NULL!" : $"{item.Mods.Count} mods")}");
+        if (item != null)
+            foreach (var m in item.Mods)
+                Console.WriteLine($"    '{m.Text}' (annTier={m.Tier}) -> {db.Match(m.Text).Count} match(es)");
     }
 }

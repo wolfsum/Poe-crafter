@@ -21,3 +21,8 @@ public record TabletTypeOption(TabletType Type, string Name)
 {
     public override string ToString() => Name;
 }
+
+public record InfluenceOption(Influence Influence, string Name)
+{
+    public override string ToString() => Name;
+}

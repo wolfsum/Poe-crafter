@@ -1,8 +1,9 @@
 namespace Poe2Crafter.Core.Models;
 
-// PoE2 jewel types. Tags verified against PoB2 ModJewel.lua weightKeys:
+// Jewel sub-types. PoE2 tags verified against PoB2 ModJewel.lua weightKeys:
 // strjewel / dexjewel / intjewel and *_radius_jewel for Time-Lost.
 // Diamond rolls mods of all three colours; Time-Lost Diamond — all radius pools.
+// Cluster* are PoE1 cluster jewel sizes (expansion_jewel_* weightKeys).
 public enum JewelType
 {
     None,
@@ -14,4 +15,7 @@ public enum JewelType
     TimeLostEmerald,  // dex_radius_jewel
     TimeLostSapphire, // int_radius_jewel
     TimeLostDiamond,  // all radius pools
+    ClusterSmall,     // PoE1: expansion_jewel_small
+    ClusterMedium,    // PoE1: expansion_jewel_medium
+    ClusterLarge,     // PoE1: expansion_jewel_large
 }

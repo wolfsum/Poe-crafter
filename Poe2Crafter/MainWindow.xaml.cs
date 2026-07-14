@@ -23,7 +23,7 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel vm)
     {
         InitializeComponent();
-        Title = $"PoE2 Crafter v{UpdateService.Current.ToString(3)}";
+        Title = $"{vm.GameName} Crafter v{UpdateService.Current.ToString(3)}";
         DataContext = _vm = vm;
         _hooker.ClickPassed       += OnLeftClickPassed;
         _hooker.PositionCaptured  += OnPositionCaptured;
@@ -31,11 +31,22 @@ public partial class MainWindow : Window
         _vm.SetCurrencyCommand.Executed += () => _calibratingCurrency = true;
         _vm.SetItemCommand.Executed     += () => _calibratingCurrency = false;
         _vm.UpdateCommand.Executed      += OnUpdateRequested;
+        _vm.SwitchGameCommand.Executed  += OnSwitchGame;
 
         LoadSettings();
 
         UpdateService.CleanupOldBinary();
         _ = CheckForUpdateAsync(silent: true);
+    }
+
+    // ── Game switch ───────────────────────────────────────────────────
+    private string? _gameOverride; // set while switching so late saves keep the new game
+
+    private void OnSwitchGame()
+    {
+        _gameOverride = _vm.GameKey == "poe2" ? "poe1" : "poe2";
+        SaveSettings(); // persist BEFORE the new process starts reading settings
+        AppControl.Restart();
     }
 
     // ── Updates ───────────────────────────────────────────────────────
@@ -112,6 +123,7 @@ public partial class MainWindow : Window
     {
         var s = new AppSettings();
         _vm.FillSettings(s);
+        s.GameVersion = _gameOverride ?? _vm.GameKey;
         s.CurrencyX   = _crafter.CurrencyPos.X;
         s.CurrencyY   = _crafter.CurrencyPos.Y;
         s.ItemX       = _crafter.ItemPos.X;

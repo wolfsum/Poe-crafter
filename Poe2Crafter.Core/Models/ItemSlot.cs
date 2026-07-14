@@ -34,4 +34,14 @@ public enum ItemSlot
     Staff,
     Warstaff,
     Trap,
+
+    // PoE1-specific: 1h/2h weapons are distinct mod pools, abyss jewels
+    OneHandSword,
+    OneHandAxe,
+    OneHandMace,
+    TwoHandSword,
+    TwoHandAxe,
+    TwoHandMace,
+    AbyssJewel,
+    ClusterJewel,
 }

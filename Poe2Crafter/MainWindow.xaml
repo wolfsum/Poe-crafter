@@ -66,11 +66,14 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="PoE2 Crafter" FontSize="15" FontWeight="SemiBold"
+                <TextBlock Text="{Binding GameName}" FontSize="15" FontWeight="SemiBold"
                            Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                <Button Content="⇄" ToolTip="Switch game (restarts)"
+                        Command="{Binding SwitchGameCommand}"
+                        Margin="6,0,0,0" Padding="5,1" FontSize="11"/>
                 <TextBlock Text="{Binding VersionText}" FontSize="10"
                            Foreground="{StaticResource DimBrush}"
-                           VerticalAlignment="Bottom" Margin="5,0,0,2"/>
+                           VerticalAlignment="Bottom" Margin="6,0,0,2"/>
                 <Button Content="{Binding UpdateText}"
                         Command="{Binding UpdateCommand}"
                         Margin="8,0,0,0" Padding="6,2" FontSize="11"/>
@@ -114,6 +117,12 @@
                       SelectedItem="{Binding SelectedTabletType}"
                       Visibility="{Binding TabletTypeVisibility}"/>
         </Grid>
+
+        <!-- Influence (PoE1) — independent dimension, own row -->
+        <ComboBox Margin="0,0,0,8"
+                  ItemsSource="{Binding InfluenceOptions}"
+                  SelectedItem="{Binding SelectedInfluence}"
+                  Visibility="{Binding InfluenceVisibility}"/>
 
         <!-- Filter -->
         <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"

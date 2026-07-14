@@ -1,8 +1,10 @@
 using System.IO;
 using System.Windows;
+using Poe2Crafter.Core.Games;
 using Poe2Crafter.Core.Matching;
 using Poe2Crafter.Core.Models;
 using Poe2Crafter.Core.Parsing;
+using Poe2Crafter.Services;
 using Poe2Crafter.ViewModels;
 
 namespace Poe2Crafter;
@@ -13,19 +15,28 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Only craftable-mod files — the Data folder also holds huge irrelevant
-        // files (QueryMods, ModItemExclusive…) that bloat the DB and slow matching
-        string[] modFiles = ["ModItem.lua", "ModJewel.lua"];
+        var settings = SettingsStore.Load();
+
+        // First run (no saved game) → ask; otherwise use the saved profile
+        var profile = GameProfiles.ByKey(settings.GameVersion);
+        if (settings.GameVersion is null)
+        {
+            var chosen = GamePicker.Choose();
+            if (chosen is null) { Shutdown(); return; }
+            profile = chosen;
+            settings.GameVersion = profile.Key;
+            SettingsStore.Save(settings);
+        }
 
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Path of Building Community (PoE2)", "Data");
+            profile.PobFolderName, "Data");
 
         if (!File.Exists(Path.Combine(dataDir, "ModItem.lua")))
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Title    = "Locate ModItem.lua (PoB2 Data folder)",
+                Title    = $"Locate ModItem.lua ({profile.Name} PoB Data folder)",
                 Filter   = "Lua files (*.lua)|*.lua",
                 FileName = "ModItem.lua",
             };
@@ -34,18 +45,16 @@ public partial class App : Application
         }
 
         var mods = new List<ModDefinition>();
-        foreach (var file in modFiles)
+        foreach (var file in profile.ModFiles)
         {
             var path = Path.Combine(dataDir, file);
             if (File.Exists(path))
                 mods.AddRange(PobModParser.ParseFile(path));
         }
-
-        // Tablet pools are not in PoB data — embedded copy from poe2wiki
-        mods.AddRange(Poe2Crafter.Core.Data.TabletMods.All);
+        mods.AddRange(profile.EmbeddedMods);
 
         var db = new ModDatabase(mods);
-        var vm = new MainViewModel(db);
+        var vm = new MainViewModel(db, profile);
         new MainWindow(vm).Show();
     }
 }

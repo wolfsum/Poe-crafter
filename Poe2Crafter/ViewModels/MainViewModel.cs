@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
+using Poe2Crafter.Core.Games;
 using Poe2Crafter.Core.Matching;
 using Poe2Crafter.Core.Models;
 using Poe2Crafter.Core.Parsing;
@@ -12,13 +13,13 @@ public class MainViewModel : ViewModelBase
 {
     private readonly ModDatabase _db;
     private readonly CraftMatcher _matcher;
+    private readonly GameProfile _profile;
+
+    public string GameName => _profile.Name;
+    public string GameKey  => _profile.Key;
 
     // ── Slot ──────────────────────────────────────────────────────────
-    public IReadOnlyList<SlotOption> SlotOptions { get; } =
-        ItemTypeHelper.SlotDisplayNames
-            .OrderBy(kv => kv.Value)
-            .Select(kv => new SlotOption(kv.Key, kv.Value))
-            .ToList();
+    public IReadOnlyList<SlotOption> SlotOptions { get; }
 
     private SlotOption _selectedSlotOption;
     public SlotOption SelectedSlotOption
@@ -50,11 +51,7 @@ public class MainViewModel : ViewModelBase
     }
 
     // ── Jewel type ────────────────────────────────────────────────────
-    public IReadOnlyList<JewelTypeOption> JewelTypeOptions { get; } =
-        ItemTypeHelper.JewelTypeDisplayNames
-            .OrderBy(kv => kv.Value)
-            .Select(kv => new JewelTypeOption(kv.Key, kv.Value))
-            .ToList();
+    public IReadOnlyList<JewelTypeOption> JewelTypeOptions { get; }
 
     private JewelTypeOption? _selectedJewelType;
     public JewelTypeOption? SelectedJewelType
@@ -71,11 +68,7 @@ public class MainViewModel : ViewModelBase
     }
 
     // ── Tablet type ───────────────────────────────────────────────────
-    public IReadOnlyList<TabletTypeOption> TabletTypeOptions { get; } =
-        ItemTypeHelper.TabletTypeDisplayNames
-            .OrderBy(kv => kv.Value)
-            .Select(kv => new TabletTypeOption(kv.Key, kv.Value))
-            .ToList();
+    public IReadOnlyList<TabletTypeOption> TabletTypeOptions { get; }
 
     private TabletTypeOption? _selectedTabletType;
     public TabletTypeOption? SelectedTabletType
@@ -89,6 +82,23 @@ public class MainViewModel : ViewModelBase
     {
         get => _tabletTypeVisibility;
         private set => Set(ref _tabletTypeVisibility, value);
+    }
+
+    // ── Influence (PoE1) ──────────────────────────────────────────────
+    public IReadOnlyList<InfluenceOption> InfluenceOptions { get; }
+
+    private InfluenceOption? _selectedInfluence;
+    public InfluenceOption? SelectedInfluence
+    {
+        get => _selectedInfluence;
+        set { Set(ref _selectedInfluence, value); RefreshModGroups(); }
+    }
+
+    private Visibility _influenceVisibility = Visibility.Collapsed;
+    public Visibility InfluenceVisibility
+    {
+        get => _influenceVisibility;
+        private set => Set(ref _influenceVisibility, value);
     }
 
     // ── Mod groups ────────────────────────────────────────────────────
@@ -261,6 +271,7 @@ public class MainViewModel : ViewModelBase
     }
 
     public RelayCommand UpdateCommand { get; } = new(() => { }); // handled in MainWindow via Executed
+    public RelayCommand SwitchGameCommand { get; } = new(() => { }); // handled in MainWindow via Executed
 
     // ── Commands ──────────────────────────────────────────────────────
     public RefreshableCommand AddTargetCommand { get; }
@@ -268,17 +279,32 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ToggleRunningCommand { get; }
 
     // ─────────────────────────────────────────────────────────────────
-    public MainViewModel(ModDatabase db)
+    public MainViewModel(ModDatabase db, GameProfile profile)
     {
         _db      = db;
+        _profile = profile;
         _matcher = new CraftMatcher(db);
+
+        SlotOptions = profile.Slots
+            .Select(s => new SlotOption(s, profile.SlotDisplayNames.GetValueOrDefault(s, s.ToString())))
+            .OrderBy(o => o.Name)
+            .ToList();
+        JewelTypeOptions = profile.JewelTypeDisplayNames
+            .OrderBy(kv => kv.Value)
+            .Select(kv => new JewelTypeOption(kv.Key, kv.Value)).ToList();
+        TabletTypeOptions = profile.TabletTypeDisplayNames
+            .OrderBy(kv => kv.Value)
+            .Select(kv => new TabletTypeOption(kv.Key, kv.Value)).ToList();
+        InfluenceOptions = profile.InfluenceDisplayNames
+            .Select(kv => new InfluenceOption(kv.Key, kv.Value)).ToList();
+
         AddTargetCommand     = new RefreshableCommand(AddTarget, () => SelectedGroup is not null && SelectedTier is not null);
         RemoveTargetCommand  = new RelayCommand<TargetModViewModel>(RemoveTarget);
         ToggleRunningCommand = new RelayCommand(() => IsRunning = !IsRunning);
         SetCurrencyCommand   = new RelayCommand(() => IsCapturing = true);
         SetItemCommand       = new RelayCommand(() => IsCapturing = true);
 
-        _selectedSlotOption = SlotOptions.First(s => s.Slot == ItemSlot.Ring);
+        _selectedSlotOption = SlotOptions.FirstOrDefault(s => s.Slot == ItemSlot.Ring) ?? SlotOptions[0];
         RefreshBaseOptions();
         RefreshModGroups();
     }
@@ -291,39 +317,53 @@ public class MainViewModel : ViewModelBase
         _selectedBaseOption = null;
         _selectedJewelType  = null;
         _selectedTabletType = null;
+        _selectedInfluence  = null;
         BaseVisibility       = Visibility.Collapsed;
         JewelTypeVisibility  = Visibility.Collapsed;
         TabletTypeVisibility = Visibility.Collapsed;
+        InfluenceVisibility  = Visibility.Collapsed;
 
-        if (ItemTypeHelper.ArmourSlots.Contains(slot))
+        if (_profile.ShowBaseFor(slot))
         {
-            foreach (var kv in ItemTypeHelper.ArmourBaseDisplayNames.Where(kv => kv.Key != ArmourBase.None))
+            foreach (var kv in _profile.ArmourBaseDisplayNames.Where(kv => kv.Key != ArmourBase.None))
                 BaseOptions.Add(new BaseOption(kv.Key, kv.Value));
             _selectedBaseOption = BaseOptions.FirstOrDefault();
             BaseVisibility = Visibility.Visible;
         }
-        else if (ItemTypeHelper.JewelSlots.Contains(slot))
+        else if (_profile.ShowJewelTypeFor(slot))
         {
             _selectedJewelType = JewelTypeOptions.FirstOrDefault();
             JewelTypeVisibility = Visibility.Visible;
         }
-        else if (ItemTypeHelper.TabletSlots.Contains(slot))
+        else if (_profile.ShowTabletTypeFor(slot))
         {
             _selectedTabletType = TabletTypeOptions.FirstOrDefault();
             TabletTypeVisibility = Visibility.Visible;
         }
+
+        // Influence is an independent dimension — can combine with armour bases
+        if (_profile.ShowInfluenceFor(slot) && InfluenceOptions.Count > 0)
+        {
+            _selectedInfluence = InfluenceOptions.FirstOrDefault(o => o.Influence == Influence.None)
+                                 ?? InfluenceOptions.FirstOrDefault();
+            InfluenceVisibility = Visibility.Visible;
+        }
+
         Notify(nameof(SelectedBaseOption));
         Notify(nameof(SelectedJewelType));
         Notify(nameof(SelectedTabletType));
+        Notify(nameof(SelectedInfluence));
     }
 
     private void RefreshModGroups()
     {
-        var slot       = _selectedSlotOption?.Slot ?? ItemSlot.Ring;
-        var armourBase = _selectedBaseOption?.Base ?? ArmourBase.None;
-        var jewelType  = _selectedJewelType?.Type ?? JewelType.None;
-        var tabletType = _selectedTabletType?.Type ?? TabletType.None;
-        _allGroups = _db.GetGroups(slot, armourBase, jewelType, tabletType);
+        var selection = new SlotSelection(
+            _selectedSlotOption?.Slot ?? ItemSlot.Ring,
+            _selectedBaseOption?.Base ?? ArmourBase.None,
+            _selectedJewelType?.Type ?? JewelType.None,
+            _selectedTabletType?.Type ?? TabletType.None,
+            _selectedInfluence?.Influence ?? Influence.None);
+        _allGroups = _db.GetGroups(_profile, selection);
         ApplyFilter();
     }
 
@@ -444,12 +484,19 @@ public class MainViewModel : ViewModelBase
             var opt = TabletTypeOptions.FirstOrDefault(o => o.Type == tt);
             if (opt != null) SelectedTabletType = opt;
         }
+        if (Enum.TryParse<Influence>(s.Influence, out var inf))
+        {
+            var opt = InfluenceOptions.FirstOrDefault(o => o.Influence == inf);
+            if (opt != null) SelectedInfluence = opt;
+        }
 
-        var slotNow   = SelectedSlotOption?.Slot ?? ItemSlot.Ring;
-        var baseNow   = SelectedBaseOption?.Base ?? ArmourBase.None;
-        var jewelNow  = SelectedJewelType?.Type ?? JewelType.None;
-        var tabletNow = SelectedTabletType?.Type ?? TabletType.None;
-        var groups    = _db.GetGroups(slotNow, baseNow, jewelNow, tabletNow);
+        var selection = new SlotSelection(
+            SelectedSlotOption?.Slot ?? ItemSlot.Ring,
+            SelectedBaseOption?.Base ?? ArmourBase.None,
+            SelectedJewelType?.Type ?? JewelType.None,
+            SelectedTabletType?.Type ?? TabletType.None,
+            SelectedInfluence?.Influence ?? Influence.None);
+        var groups    = _db.GetGroups(_profile, selection);
 
         foreach (var t in s.Targets)
         {
@@ -471,6 +518,7 @@ public class MainViewModel : ViewModelBase
         s.ArmourBase = SelectedBaseOption?.Base.ToString();
         s.JewelType  = SelectedJewelType?.Type.ToString();
         s.TabletType = SelectedTabletType?.Type.ToString();
+        s.Influence  = SelectedInfluence?.Influence.ToString();
         s.Targets    = TargetMods
             .Select(t => new Services.TargetSetting
             {

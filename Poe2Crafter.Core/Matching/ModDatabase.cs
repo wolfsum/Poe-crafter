@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Poe2Crafter.Core.Games;
 using Poe2Crafter.Core.Models;
-using Poe2Crafter.Core.Matching;
 
 namespace Poe2Crafter.Core.Matching;
 
@@ -23,11 +23,11 @@ public class ModDatabase
             .ToList();
     }
 
-    // All mod groups available for a given item slot + armour base.
-    // Groups are sorted alphabetically, tiers within each group best-first.
-    public IReadOnlyList<ModGroup> GetGroups(ItemSlot slot, ArmourBase armourBase = ArmourBase.None, JewelType jewelType = JewelType.None, TabletType tabletType = TabletType.None)
+    // All mod groups available for the given selection under the active game
+    // profile. Groups are sorted alphabetically, tiers within each best-first.
+    public IReadOnlyList<ModGroup> GetGroups(GameProfile profile, SlotSelection selection)
     {
-        var tags = ItemTypeHelper.GetTags(slot, armourBase, jewelType, tabletType);
+        var tags = profile.BuildTags(selection);
 
         return AllMods
             .Where(m => m.ItemTags.Any(tags.Contains))

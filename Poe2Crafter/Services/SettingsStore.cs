@@ -12,10 +12,12 @@ public class TargetSetting
 
 public class AppSettings
 {
+    public string? GameVersion { get; set; } // "poe1" / "poe2" — selected game profile
     public string? Slot       { get; set; }
     public string? ArmourBase { get; set; }
     public string? JewelType  { get; set; }
     public string? TabletType { get; set; }
+    public string? Influence  { get; set; }
     public List<TargetSetting> Targets { get; set; } = [];
 
     public bool IsBlockingEnabled { get; set; } = true;
