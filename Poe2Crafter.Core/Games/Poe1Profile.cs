@@ -65,12 +65,81 @@ public sealed class Poe1Profile : GameProfile
         [ArmourBase.All]    = "Armour / Evasion / ES",
     };
 
-    public override IReadOnlyDictionary<JewelType, string> JewelTypeDisplayNames => new Dictionary<JewelType, string>
+    public override IReadOnlyDictionary<JewelType, string> JewelTypesFor(ItemSlot slot) => slot switch
     {
-        [JewelType.ClusterSmall]  = "Small Cluster",
-        [JewelType.ClusterMedium] = "Medium Cluster",
-        [JewelType.ClusterLarge]  = "Large Cluster",
+        ItemSlot.Jewel => new Dictionary<JewelType, string>
+        {
+            [JewelType.Crimson]   = "Crimson (Str)",
+            [JewelType.Viridian]  = "Viridian (Dex)",
+            [JewelType.Cobalt]    = "Cobalt (Int)",
+            [JewelType.Prismatic] = "Prismatic (all)",
+        },
+        ItemSlot.AbyssJewel => new Dictionary<JewelType, string>
+        {
+            [JewelType.MurderousEye] = "Murderous Eye (melee)",
+            [JewelType.SearchingEye] = "Searching Eye (ranged)",
+            [JewelType.HypnoticEye]  = "Hypnotic Eye (caster)",
+            [JewelType.GhastlyEye]   = "Ghastly Eye (minion)",
+        },
+        ItemSlot.ClusterJewel => new Dictionary<JewelType, string>
+        {
+            [JewelType.ClusterSmall]  = "Small Cluster",
+            [JewelType.ClusterMedium] = "Medium Cluster",
+            [JewelType.ClusterLarge]  = "Large Cluster",
+        },
+        _ => EmptyJewel,
     };
+
+    // Parsed from ClusterJewels.lua by LoadAuxData
+    private readonly Dictionary<JewelType, List<ClusterBase>> _clusterBases = [];
+
+    public override IReadOnlyList<ClusterBase> ClusterBasesFor(JewelType size) =>
+        _clusterBases.TryGetValue(size, out var list) ? list : [];
+
+    public override void LoadAuxData(string dataDir)
+    {
+        var path = Path.Combine(dataDir, "ClusterJewels.lua");
+        if (!File.Exists(path)) return;
+
+        _clusterBases.Clear();
+        JewelType? size = null;
+        string? pendingTag = null;
+
+        var sizeRegex = new System.Text.RegularExpressions.Regex(@"\[""(Small|Medium|Large) Cluster Jewel""\]");
+        var tagRegex  = new System.Text.RegularExpressions.Regex(@"^\s*\[""(?<t>affliction_[a-z_]+)""\]\s*=\s*\{");
+        var nameRegex = new System.Text.RegularExpressions.Regex(@"^\s*name\s*=\s*""(?<n>[^""]+)""");
+
+        foreach (var line in File.ReadLines(path))
+        {
+            var sm = sizeRegex.Match(line);
+            if (sm.Success)
+            {
+                size = sm.Groups[1].Value switch
+                {
+                    "Small"  => JewelType.ClusterSmall,
+                    "Medium" => JewelType.ClusterMedium,
+                    _        => JewelType.ClusterLarge,
+                };
+                pendingTag = null;
+                continue;
+            }
+
+            var tm = tagRegex.Match(line);
+            if (tm.Success) { pendingTag = tm.Groups["t"].Value; continue; }
+
+            var nm = nameRegex.Match(line);
+            if (nm.Success && size is not null && pendingTag is not null)
+            {
+                var list = _clusterBases.TryGetValue(size.Value, out var l) ? l : _clusterBases[size.Value] = [];
+                if (!list.Any(b => b.Tag == pendingTag))
+                    list.Add(new ClusterBase(nm.Groups["n"].Value, pendingTag));
+                pendingTag = null;
+            }
+        }
+
+        foreach (var list in _clusterBases.Values)
+            list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+    }
 
     public override IReadOnlyDictionary<Influence, string> InfluenceDisplayNames => new Dictionary<Influence, string>
     {
@@ -103,7 +172,8 @@ public sealed class Poe1Profile : GameProfile
         [ItemSlot.Jewel, ItemSlot.AbyssJewel, ItemSlot.ClusterJewel];
 
     public override bool ShowBaseFor(ItemSlot slot)      => ArmourSlots.Contains(slot);
-    public override bool ShowJewelTypeFor(ItemSlot slot) => slot == ItemSlot.ClusterJewel;
+    public override bool ShowJewelTypeFor(ItemSlot slot) =>
+        slot is ItemSlot.Jewel or ItemSlot.AbyssJewel or ItemSlot.ClusterJewel;
     public override bool ShowInfluenceFor(ItemSlot slot) => !NoInfluence.Contains(slot);
 
     public override IReadOnlySet<string> BuildTags(SlotSelection sel)
@@ -119,6 +189,26 @@ public sealed class Poe1Profile : GameProfile
         if (!NoInfluence.Contains(sel.Slot) && sel.Influence != Influence.None && slotTags.Count > 0)
             tags.Add($"{slotTags[0]}_{InfluenceTag(sel.Influence)}");
 
+        // Base jewels: colour pools are expressed as "not_<other colour>" keys —
+        // e.g. a "not_int" mod rolls on Crimson and Viridian. Prismatic has all.
+        if (sel.Slot == ItemSlot.Jewel)
+            foreach (var t in sel.JewelType switch
+            {
+                JewelType.Crimson   => new[] { "not_dex", "not_int" },
+                JewelType.Viridian  => ["not_str", "not_int"],
+                JewelType.Cobalt    => ["not_str", "not_dex"],
+                _                   => ["not_str", "not_dex", "not_int"], // Prismatic / unset
+            }) tags.Add(t);
+
+        if (sel.Slot == ItemSlot.AbyssJewel)
+            tags.Add(sel.JewelType switch
+            {
+                JewelType.SearchingEye => "abyss_jewel_ranged",
+                JewelType.HypnoticEye  => "abyss_jewel_caster",
+                JewelType.GhastlyEye   => "abyss_jewel_summoner",
+                _                      => "abyss_jewel_melee", // Murderous / unset
+            });
+
         if (sel.Slot == ItemSlot.ClusterJewel)
         {
             tags.Add(sel.JewelType switch
@@ -127,35 +217,16 @@ public sealed class Poe1Profile : GameProfile
                 JewelType.ClusterLarge  => "expansion_jewel_large",
                 _                       => "expansion_jewel_small",
             });
-            // Notables are keyed by the jewel's base enchant type — include all
-            // so every notable is listable; text matching stays exact anyway
-            foreach (var t in AfflictionTags) tags.Add(t);
+            // Notable pool is defined by the jewel's base enchant type
+            if (sel.ClusterBase is not null)
+                tags.Add(sel.ClusterBase);
+            else
+                foreach (var b in ClusterBasesFor(sel.JewelType)) tags.Add(b.Tag);
         }
 
         return tags;
     }
 
-    // All notable pools from ModJewelCluster.lua (weightKey "affliction_*")
-    private static readonly string[] AfflictionTags =
-    [
-        "affliction_area_damage", "affliction_armour", "affliction_attack_damage_",
-        "affliction_attack_damage_while_dual_wielding_", "affliction_attack_damage_while_holding_a_shield",
-        "affliction_axe_and_sword_damage", "affliction_bow_damage", "affliction_brand_damage",
-        "affliction_chance_to_block", "affliction_chance_to_dodge_attacks", "affliction_channelling_skill_damage",
-        "affliction_chaos_damage", "affliction_chaos_damage_over_time_multiplier", "affliction_chaos_resistance",
-        "affliction_cold_damage", "affliction_cold_damage_over_time_multiplier", "affliction_cold_resistance",
-        "affliction_critical_chance", "affliction_curse_effect_small", "affliction_dagger_and_claw_damage",
-        "affliction_damage_over_time_multiplier", "affliction_damage_while_you_have_a_herald",
-        "affliction_damage_with_two_handed_melee_weapons", "affliction_elemental_damage", "affliction_evasion",
-        "affliction_fire_damage", "affliction_fire_damage_over_time_multiplier", "affliction_fire_resistance",
-        "affliction_flask_duration", "affliction_life_and_mana_recovery_from_flasks", "affliction_lightning_damage",
-        "affliction_lightning_resistance", "affliction_mace_and_staff_damage", "affliction_maximum_energy_shield",
-        "affliction_maximum_life", "affliction_maximum_mana", "affliction_minion_damage",
-        "affliction_minion_damage_while_you_have_a_herald", "affliction_minion_life", "affliction_physical_damage",
-        "affliction_physical_damage_over_time_multiplier", "affliction_projectile_damage",
-        "affliction_reservation_efficiency_small", "affliction_spell_damage", "affliction_totem_damage",
-        "affliction_trap_and_mine_damage", "affliction_wand_damage", "affliction_warcry_buff_effect",
-    ];
 
     private static IEnumerable<string> SlotTags(ItemSlot slot) => slot switch
     {

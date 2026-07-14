@@ -18,6 +18,7 @@ public class AppSettings
     public string? JewelType  { get; set; }
     public string? TabletType { get; set; }
     public string? Influence  { get; set; }
+    public string? ClusterBase { get; set; } // affliction_* tag
     public List<TargetSetting> Targets { get; set; } = [];
 
     public bool IsBlockingEnabled { get; set; } = true;

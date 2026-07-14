@@ -51,13 +51,30 @@ public class MainViewModel : ViewModelBase
     }
 
     // ── Jewel type ────────────────────────────────────────────────────
-    public IReadOnlyList<JewelTypeOption> JewelTypeOptions { get; }
+    public ObservableCollection<JewelTypeOption> JewelTypeOptions { get; } = [];
 
     private JewelTypeOption? _selectedJewelType;
     public JewelTypeOption? SelectedJewelType
     {
         get => _selectedJewelType;
-        set { Set(ref _selectedJewelType, value); RefreshModGroups(); }
+        set { Set(ref _selectedJewelType, value); RefreshClusterBases(); RefreshModGroups(); }
+    }
+
+    // ── Cluster base (PoE1) ───────────────────────────────────────────
+    public ObservableCollection<ClusterBase> ClusterBaseOptions { get; } = [];
+
+    private ClusterBase? _selectedClusterBase;
+    public ClusterBase? SelectedClusterBase
+    {
+        get => _selectedClusterBase;
+        set { Set(ref _selectedClusterBase, value); RefreshModGroups(); }
+    }
+
+    private Visibility _clusterBaseVisibility = Visibility.Collapsed;
+    public Visibility ClusterBaseVisibility
+    {
+        get => _clusterBaseVisibility;
+        private set => Set(ref _clusterBaseVisibility, value);
     }
 
     private Visibility _jewelTypeVisibility = Visibility.Collapsed;
@@ -289,9 +306,6 @@ public class MainViewModel : ViewModelBase
             .Select(s => new SlotOption(s, profile.SlotDisplayNames.GetValueOrDefault(s, s.ToString())))
             .OrderBy(o => o.Name)
             .ToList();
-        JewelTypeOptions = profile.JewelTypeDisplayNames
-            .OrderBy(kv => kv.Value)
-            .Select(kv => new JewelTypeOption(kv.Key, kv.Value)).ToList();
         TabletTypeOptions = profile.TabletTypeDisplayNames
             .OrderBy(kv => kv.Value)
             .Select(kv => new TabletTypeOption(kv.Key, kv.Value)).ToList();
@@ -332,6 +346,9 @@ public class MainViewModel : ViewModelBase
         }
         else if (_profile.ShowJewelTypeFor(slot))
         {
+            JewelTypeOptions.Clear();
+            foreach (var kv in _profile.JewelTypesFor(slot))
+                JewelTypeOptions.Add(new JewelTypeOption(kv.Key, kv.Value));
             _selectedJewelType = JewelTypeOptions.FirstOrDefault();
             JewelTypeVisibility = Visibility.Visible;
         }
@@ -340,6 +357,7 @@ public class MainViewModel : ViewModelBase
             _selectedTabletType = TabletTypeOptions.FirstOrDefault();
             TabletTypeVisibility = Visibility.Visible;
         }
+        RefreshClusterBases();
 
         // Influence is an independent dimension — can combine with armour bases
         if (_profile.ShowInfluenceFor(slot) && InfluenceOptions.Count > 0)
@@ -355,15 +373,50 @@ public class MainViewModel : ViewModelBase
         Notify(nameof(SelectedInfluence));
     }
 
+    // Cluster jewels have a second dimension: the base enchant type. The list
+    // depends on the chosen size and comes from ClusterJewels.lua.
+    private void RefreshClusterBases()
+    {
+        var slot = _selectedSlotOption?.Slot ?? ItemSlot.Ring;
+        ClusterBaseOptions.Clear();
+        _selectedClusterBase = null;
+        ClusterBaseVisibility = Visibility.Collapsed;
+
+        if (slot == ItemSlot.ClusterJewel && _selectedJewelType is not null)
+        {
+            foreach (var b in _profile.ClusterBasesFor(_selectedJewelType.Type))
+                ClusterBaseOptions.Add(b);
+            _selectedClusterBase = ClusterBaseOptions.FirstOrDefault();
+            if (ClusterBaseOptions.Count > 0) ClusterBaseVisibility = Visibility.Visible;
+        }
+        Notify(nameof(SelectedClusterBase));
+    }
+
     private void RefreshModGroups()
     {
+        var influence = _selectedInfluence?.Influence ?? Influence.None;
         var selection = new SlotSelection(
             _selectedSlotOption?.Slot ?? ItemSlot.Ring,
             _selectedBaseOption?.Base ?? ArmourBase.None,
             _selectedJewelType?.Type ?? JewelType.None,
             _selectedTabletType?.Type ?? TabletType.None,
-            _selectedInfluence?.Influence ?? Influence.None);
-        _allGroups = _db.GetGroups(_profile, selection);
+            influence,
+            _selectedClusterBase?.Tag);
+        var groups = _db.GetGroups(_profile, selection);
+
+        // Make the influence effect visible: groups that exist only thanks to
+        // the influence are starred and float to the top
+        if (influence != Influence.None)
+        {
+            var plainIds = _db.GetGroups(_profile, selection with { Influence = Influence.None })
+                .Select(g => g.GroupId)
+                .ToHashSet();
+            foreach (var g in groups)
+                g.Highlight = !plainIds.Contains(g.GroupId);
+            groups = groups.OrderByDescending(g => g.Highlight).ThenBy(g => g.DisplayName).ToList();
+        }
+
+        _allGroups = groups;
         ApplyFilter();
     }
 
@@ -489,13 +542,19 @@ public class MainViewModel : ViewModelBase
             var opt = InfluenceOptions.FirstOrDefault(o => o.Influence == inf);
             if (opt != null) SelectedInfluence = opt;
         }
+        if (s.ClusterBase != null)
+        {
+            var opt = ClusterBaseOptions.FirstOrDefault(o => o.Tag == s.ClusterBase);
+            if (opt != null) SelectedClusterBase = opt;
+        }
 
         var selection = new SlotSelection(
             SelectedSlotOption?.Slot ?? ItemSlot.Ring,
             SelectedBaseOption?.Base ?? ArmourBase.None,
             SelectedJewelType?.Type ?? JewelType.None,
             SelectedTabletType?.Type ?? TabletType.None,
-            SelectedInfluence?.Influence ?? Influence.None);
+            SelectedInfluence?.Influence ?? Influence.None,
+            SelectedClusterBase?.Tag);
         var groups    = _db.GetGroups(_profile, selection);
 
         foreach (var t in s.Targets)
@@ -519,6 +578,7 @@ public class MainViewModel : ViewModelBase
         s.JewelType  = SelectedJewelType?.Type.ToString();
         s.TabletType = SelectedTabletType?.Type.ToString();
         s.Influence  = SelectedInfluence?.Influence.ToString();
+        s.ClusterBase = SelectedClusterBase?.Tag;
         s.Targets    = TargetMods
             .Select(t => new Services.TargetSetting
             {

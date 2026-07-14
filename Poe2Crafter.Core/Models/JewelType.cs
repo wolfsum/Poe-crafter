@@ -18,4 +18,12 @@ public enum JewelType
     ClusterSmall,     // PoE1: expansion_jewel_small
     ClusterMedium,    // PoE1: expansion_jewel_medium
     ClusterLarge,     // PoE1: expansion_jewel_large
+    Crimson,          // PoE1 Str  → not_dex + not_int pools
+    Viridian,         // PoE1 Dex  → not_str + not_int
+    Cobalt,           // PoE1 Int  → not_str + not_dex
+    Prismatic,        // PoE1 any colour → all three pools
+    MurderousEye,     // PoE1 abyss → abyss_jewel_melee
+    SearchingEye,     // PoE1 abyss → abyss_jewel_ranged
+    HypnoticEye,      // PoE1 abyss → abyss_jewel_caster
+    GhastlyEye,       // PoE1 abyss → abyss_jewel_summoner
 }

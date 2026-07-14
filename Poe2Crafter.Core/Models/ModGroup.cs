@@ -10,6 +10,7 @@ public class ModGroup
     public string DisplayName { get; }     // "+#% to Fire Resistance"
     public string ModType { get; }         // "Prefix" / "Suffix"
     public IReadOnlyList<ModDefinition> Tiers { get; }  // best tier first
+    public bool Highlight { get; set; }    // e.g. influence-exclusive groups
 
     public ModGroup(string groupId, IEnumerable<ModDefinition> tiers)
     {

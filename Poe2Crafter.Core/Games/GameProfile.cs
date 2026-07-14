@@ -31,6 +31,16 @@ public abstract class GameProfile
     public virtual bool ShowTabletTypeFor(ItemSlot slot) => false;
     public virtual bool ShowInfluenceFor(ItemSlot slot)  => false;
 
+    // Jewel sub-types offered for a slot (jewel colours / abyss eyes / cluster
+    // sizes differ per slot in PoE1). Default: the profile-wide list.
+    public virtual IReadOnlyDictionary<JewelType, string> JewelTypesFor(ItemSlot slot) => JewelTypeDisplayNames;
+
+    // Cluster jewel bases ("Life", "Fire Damage", …) for a given cluster size.
+    public virtual IReadOnlyList<ClusterBase> ClusterBasesFor(JewelType size) => [];
+
+    // Load auxiliary data files (e.g. ClusterJewels.lua) once dataDir is known.
+    public virtual void LoadAuxData(string dataDir) { }
+
     // Central weightKey-tag assembly for the current selection.
     public abstract IReadOnlySet<string> BuildTags(SlotSelection sel);
 

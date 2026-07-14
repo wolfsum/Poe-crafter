@@ -29,6 +29,9 @@
                                Foreground="#1e1e1e"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
+                <TextBlock Text="★" Foreground="{StaticResource AccentBrush}" Margin="0,0,4,0"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding Highlight, Converter={StaticResource BoolToVis}}"/>
                 <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
             </StackPanel>
         </DataTemplate>
@@ -123,6 +126,12 @@
                   ItemsSource="{Binding InfluenceOptions}"
                   SelectedItem="{Binding SelectedInfluence}"
                   Visibility="{Binding InfluenceVisibility}"/>
+
+        <!-- Cluster jewel base (PoE1) -->
+        <ComboBox Margin="0,0,0,8"
+                  ItemsSource="{Binding ClusterBaseOptions}"
+                  SelectedItem="{Binding SelectedClusterBase}"
+                  Visibility="{Binding ClusterBaseVisibility}"/>
 
         <!-- Filter -->
         <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}"

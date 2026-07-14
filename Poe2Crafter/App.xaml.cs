@@ -44,6 +44,8 @@ public partial class App : Application
             dataDir = Path.GetDirectoryName(dlg.FileName)!;
         }
 
+        profile.LoadAuxData(dataDir); // e.g. cluster jewel base catalog
+
         var mods = new List<ModDefinition>();
         foreach (var file in profile.ModFiles)
         {
