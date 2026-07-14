@@ -2,7 +2,7 @@ using Poe2Crafter.Core.Parsing;
 
 namespace Poe2Crafter.Core.Matching;
 
-public class CraftMatcher(ModDatabase db)
+public class CraftMatcher(ModDatabase db, bool useAnnotationTiers = true)
 {
     public MatchResult Check(ParsedItem item, IReadOnlyList<TargetCondition> targets)
     {
@@ -10,10 +10,12 @@ public class CraftMatcher(ModDatabase db)
             return new MatchResult(true, false, [], []);
 
         // Match every mod line against the database. The tier parsed from the
-        // in-game annotation wins over the DB tier inferred from value ranges.
+        // in-game annotation wins over the DB tier inferred from value ranges —
+        // but only when the game's tier numbering matches the DB (PoE2). PoE1
+        // counts tiers down from the top, so there we trust the value ranges.
         var allMatches = item.Mods
             .SelectMany(line => db.Match(line.Text)
-                .Select(m => (line, m, tier: line.Tier > 0 ? line.Tier : m.Mod.Tier)))
+                .Select(m => (line, m, tier: useAnnotationTiers && line.Tier > 0 ? line.Tier : m.Mod.Tier)))
             .ToList();
 
         var hits   = new List<HitInfo>();

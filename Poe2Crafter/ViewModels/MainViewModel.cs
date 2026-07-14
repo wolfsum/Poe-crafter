@@ -300,7 +300,7 @@ public class MainViewModel : ViewModelBase
     {
         _db      = db;
         _profile = profile;
-        _matcher = new CraftMatcher(db);
+        _matcher = new CraftMatcher(db, profile.UseAnnotationTiers);
 
         SlotOptions = profile.Slots
             .Select(s => new SlotOption(s, profile.SlotDisplayNames.GetValueOrDefault(s, s.ToString())))

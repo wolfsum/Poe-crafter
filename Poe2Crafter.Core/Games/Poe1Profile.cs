@@ -14,6 +14,40 @@ public sealed class Poe1Profile : GameProfile
     public override IReadOnlyList<string> ModFiles =>
         ["ModItem.lua", "ModJewel.lua", "ModJewelAbyss.lua", "ModJewelCluster.lua", "ModVeiled.lua"];
 
+    // PoE1 game tiers count down from the top — annotation numbers don't match
+    // PoB's ascending ids, so tier inference falls back to value ranges
+    public override bool UseAnnotationTiers => false;
+
+    // Mods PoB models in code rather than data: cluster passive-effect prefix
+    // and the jewel-socket prefix (verified against poewiki modifier lists)
+    public override IReadOnlyList<ModDefinition> EmbeddedMods
+    {
+        get
+        {
+            ModDefinition Make(string id, string group, string affix, string template, int tier, int lvl, string[] itemTags) => new()
+            {
+                Id = id, Type = "Prefix", AffixName = affix,
+                Template = template, Templates = [template],
+                MatchRegex = Parsing.PobModParser.BuildMatchRegex(template),
+                Group = group, Tier = tier, MinLevel = lvl,
+                Source = "embedded", ItemTags = itemTags,
+            };
+
+            string[] allSizes = ["expansion_jewel_small", "expansion_jewel_medium", "expansion_jewel_large"];
+            string[] bigSizes = ["expansion_jewel_medium", "expansion_jewel_large"];
+
+            return
+            [
+                Make("ClusterSmallPassiveEffect1", "AfflictionJewelSmallPassivesHaveIncreasedEffect",
+                     "Potent",   "Added Small Passive Skills have 25% increased Effect", 1, 1,  allSizes),
+                Make("ClusterSmallPassiveEffect2", "AfflictionJewelSmallPassivesHaveIncreasedEffect",
+                     "Powerful", "Added Small Passive Skills have 35% increased Effect", 2, 84, allSizes),
+                Make("ClusterJewelSocket1", "AfflictionJewelSocket",
+                     "Socket",   "1 Added Passive Skill is a Jewel Socket", 1, 1, bigSizes),
+            ];
+        }
+    }
+
     public override IReadOnlyList<ItemSlot> Slots =>
     [
         ItemSlot.Ring, ItemSlot.Amulet, ItemSlot.Belt, ItemSlot.Quiver,
