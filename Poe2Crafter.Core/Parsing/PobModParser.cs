@@ -66,6 +66,11 @@ public static class PobModParser
 
             if (!typeMatch.Success || !groupMatch.Success || !affixFieldMatch.Success) continue;
 
+            // Only currency-craftable affixes. PoB data also carries Corrupted,
+            // Eater/Exarch and Synthesis implicits, Scourge, Delve implicits —
+            // none of those can roll from chaos/alt/essence crafting.
+            if (typeMatch.Groups["v"].Value is not ("Prefix" or "Suffix")) continue;
+
             var templates = ExtractTemplates(affixFieldMatch, body);
             if (templates.Length == 0) continue;
 
