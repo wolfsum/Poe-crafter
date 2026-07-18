@@ -160,6 +160,10 @@ public partial class MainWindow : Window
     private void OnClipboardChanged()
     {
         _clipTimer?.Stop();
+        // 100 ms coalesces PoE's burst of clipboard events per copy. Cutting this
+        // shorter reads the clipboard before the last event lands — AutoCrafter
+        // then sees the PREVIOUS roll's text again, misreads it as "unchanged",
+        // and repicks currency thinking it ran out.
         _clipTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         _clipTimer.Tick += (_, _) =>
         {

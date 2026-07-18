@@ -3,13 +3,6 @@ using System.Text.Json;
 
 namespace Poe2Crafter.Services;
 
-public class TargetSetting
-{
-    public string GroupId { get; set; } = "";
-    public int    Tier    { get; set; }
-    public bool   IsExact { get; set; }
-}
-
 public class AppSettings
 {
     public string? GameVersion { get; set; } // "poe1" / "poe2" — selected game profile
@@ -19,7 +12,8 @@ public class AppSettings
     public string? TabletType { get; set; }
     public string? Influence  { get; set; }
     public string? ClusterBase { get; set; } // affliction_* tag
-    public List<TargetSetting> Targets { get; set; } = [];
+    // Target mods are deliberately NOT persisted — re-adding them takes seconds
+    // and a stale list from a past session caused surprise STOP/GO states.
 
     public bool IsBlockingEnabled { get; set; } = true;
     public bool IsAutoMode        { get; set; }

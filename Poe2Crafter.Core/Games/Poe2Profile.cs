@@ -92,6 +92,15 @@ public sealed class Poe2Profile : GameProfile
     private static readonly HashSet<ItemSlot> ArmourSlots =
         [ItemSlot.Helmet, ItemSlot.Gloves, ItemSlot.Boots, ItemSlot.BodyArmour, ItemSlot.Shield];
 
+    // Keep item / jewel / tablet mod pools separated — "default" weight keys
+    // are catch-alls within their own domain only.
+    public override bool SourceAllowed(string source, ItemSlot slot) => slot switch
+    {
+        ItemSlot.Jewel  => source == "ModJewel.lua",
+        ItemSlot.Tablet => source == "tablet",
+        _               => source == "ModItem.lua",
+    };
+
     public override bool ShowBaseFor(ItemSlot slot)       => ArmourSlots.Contains(slot);
     public override bool ShowJewelTypeFor(ItemSlot slot)  => slot == ItemSlot.Jewel;
     public override bool ShowTabletTypeFor(ItemSlot slot) => slot == ItemSlot.Tablet;

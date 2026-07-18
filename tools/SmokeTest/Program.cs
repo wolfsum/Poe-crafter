@@ -17,7 +17,7 @@ foreach (var profile in GameProfiles.All)
     foreach (var f in profile.ModFiles)
     {
         var p = Path.Combine(dataDir, f);
-        if (File.Exists(p)) mods.AddRange(PobModParser.ParseFile(p));
+        if (File.Exists(p)) mods.AddRange(PobModParser.ParseFile(p, source: f));
         else Console.WriteLine($"  !! missing {f}");
     }
     mods.AddRange(profile.EmbeddedMods);

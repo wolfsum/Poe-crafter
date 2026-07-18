@@ -34,6 +34,19 @@ public partial class App : Application
 
         if (!File.Exists(Path.Combine(dataDir, "ModItem.lua")))
         {
+            // The mod database comes from Path of Building's data files — without
+            // an installed PoB there is nothing to craft against. Explain instead
+            // of silently opening a file picker.
+            var pob = profile.Key == "poe2" ? "Path of Building (PoE2)" : "Path of Building Community";
+            var res = MessageBox.Show(
+                $"{pob} не найден.\n\n" +
+                $"Ожидаемый путь с данными:\n{dataDir}\n\n" +
+                $"База модов берётся из файлов PoB — установи {pob} и перезапусти.\n\n" +
+                "Либо нажми OK и укажи ModItem.lua вручную (нестандартная установка).",
+                $"{profile.Name} Crafter — PoB не найден",
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (res != MessageBoxResult.OK) { Shutdown(); return; }
+
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
                 Title    = $"Locate ModItem.lua ({profile.Name} PoB Data folder)",
@@ -51,7 +64,7 @@ public partial class App : Application
         {
             var path = Path.Combine(dataDir, file);
             if (File.Exists(path))
-                mods.AddRange(PobModParser.ParseFile(path));
+                mods.AddRange(PobModParser.ParseFile(path, source: file));
         }
         mods.AddRange(profile.EmbeddedMods);
 

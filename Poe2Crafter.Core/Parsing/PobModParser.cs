@@ -81,6 +81,7 @@ public static class PobModParser
                 : [];
 
             var itemTags = ParseItemTags(weightKeyMatch, weightValMatch);
+            var (weightKeys, weightVals) = ParseWeights(weightKeyMatch, weightValMatch);
 
             var tierMatch = TierRegex.Match(id);
             var template  = templates[0];
@@ -118,10 +119,28 @@ public static class PobModParser
                 ValuesMin = vMin,
                 ValuesMax = vMax,
                 ItemTags  = itemTags,
+                WeightKeys = weightKeys,
+                WeightVals = weightVals,
             });
         }
 
         return results;
+    }
+
+    // Raw ordered weightKey/weightVal pairs — availability is decided by the
+    // first key matching the item's tags (see ModDefinition.WeightKeys).
+    private static (string[] keys, int[] vals) ParseWeights(Match keyMatch, Match valMatch)
+    {
+        if (!keyMatch.Success || !valMatch.Success) return ([], []);
+
+        var keys = QuotedRegex.Matches(keyMatch.Groups["v"].Value)
+            .Select(m => m.Groups["t"].Value)
+            .ToArray();
+        var vals = NumberRegex.Matches(valMatch.Groups["v"].Value)
+            .Select(m => int.Parse(m.Groups["n"].Value))
+            .ToArray();
+
+        return (keys, vals);
     }
 
     private static string[] ParseItemTags(Match keyMatch, Match valMatch)

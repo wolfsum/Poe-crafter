@@ -47,7 +47,7 @@ public sealed class Poe1Profile : GameProfile
         ItemSlot.Ring, ItemSlot.Amulet, ItemSlot.Belt, ItemSlot.Quiver,
         ItemSlot.Helmet, ItemSlot.Gloves, ItemSlot.Boots, ItemSlot.BodyArmour, ItemSlot.Shield,
         ItemSlot.Jewel, ItemSlot.AbyssJewel, ItemSlot.ClusterJewel,
-        ItemSlot.Claw, ItemSlot.Dagger, ItemSlot.Wand, ItemSlot.Sceptre,
+        ItemSlot.Claw, ItemSlot.Dagger, ItemSlot.Wand, ItemSlot.ConvokingWand, ItemSlot.Sceptre,
         ItemSlot.OneHandSword, ItemSlot.OneHandAxe, ItemSlot.OneHandMace,
         ItemSlot.Bow, ItemSlot.Staff,
         ItemSlot.TwoHandSword, ItemSlot.TwoHandAxe, ItemSlot.TwoHandMace,
@@ -70,6 +70,7 @@ public sealed class Poe1Profile : GameProfile
         [ItemSlot.Claw]         = "Claw",
         [ItemSlot.Dagger]       = "Dagger",
         [ItemSlot.Wand]         = "Wand",
+        [ItemSlot.ConvokingWand] = "Wand (Convoking)",
         [ItemSlot.Sceptre]      = "Sceptre",
         [ItemSlot.OneHandSword] = "One-Hand Sword",
         [ItemSlot.OneHandAxe]   = "One-Hand Axe",
@@ -199,6 +200,18 @@ public sealed class Poe1Profile : GameProfile
     private static readonly HashSet<ItemSlot> NoInfluence =
         [ItemSlot.Jewel, ItemSlot.AbyssJewel, ItemSlot.ClusterJewel];
 
+    // "default" weight keys are catch-alls within one item domain — keep item,
+    // jewel, abyss and cluster pools from leaking into each other. (ModJewel
+    // also feeds abyss jewels: its keys reference "abyss_jewel" explicitly.)
+    public override bool SourceAllowed(string source, ItemSlot slot) => slot switch
+    {
+        _ when source == "embedded" => true, // tag-gated explicitly, no default key
+        ItemSlot.Jewel        => source == "ModJewel.lua",
+        ItemSlot.AbyssJewel   => source is "ModJewel.lua" or "ModJewelAbyss.lua",
+        ItemSlot.ClusterJewel => source == "ModJewelCluster.lua",
+        _                     => source is "ModItem.lua" or "ModVeiled.lua",
+    };
+
     public override bool ShowBaseFor(ItemSlot slot)      => ArmourSlots.Contains(slot);
     public override bool ShowJewelTypeFor(ItemSlot slot) =>
         slot is ItemSlot.Jewel or ItemSlot.AbyssJewel or ItemSlot.ClusterJewel;
@@ -272,6 +285,8 @@ public sealed class Poe1Profile : GameProfile
         ItemSlot.Claw         => ["claw", "one_hand_weapon", "weapon"],
         ItemSlot.Dagger       => ["dagger", "one_hand_weapon", "weapon"],
         ItemSlot.Wand         => ["wand", "one_hand_weapon", "weapon"],
+        // Convoking Wand: normal wand pool + minion mods gated by the base tag
+        ItemSlot.ConvokingWand => ["wand", "one_hand_weapon", "weapon", "weapon_can_roll_minion_modifiers"],
         ItemSlot.Sceptre      => ["sceptre", "one_hand_weapon", "weapon"],
         ItemSlot.OneHandSword => ["sword", "one_hand_weapon", "weapon"],
         ItemSlot.OneHandAxe   => ["axe", "one_hand_weapon", "weapon"],

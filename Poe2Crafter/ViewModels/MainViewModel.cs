@@ -548,25 +548,6 @@ public class MainViewModel : ViewModelBase
             if (opt != null) SelectedClusterBase = opt;
         }
 
-        var selection = new SlotSelection(
-            SelectedSlotOption?.Slot ?? ItemSlot.Ring,
-            SelectedBaseOption?.Base ?? ArmourBase.None,
-            SelectedJewelType?.Type ?? JewelType.None,
-            SelectedTabletType?.Type ?? TabletType.None,
-            SelectedInfluence?.Influence ?? Influence.None,
-            SelectedClusterBase?.Tag);
-        var groups    = _db.GetGroups(_profile, selection);
-
-        foreach (var t in s.Targets)
-        {
-            var group = groups.FirstOrDefault(g => g.GroupId == t.GroupId);
-            var tier  = group?.Tiers.FirstOrDefault(x => x.Tier == t.Tier);
-            if (group is null || tier is null) continue;
-            if (TargetMods.Any(x => x.Group.GroupId == group.GroupId)) continue;
-            TargetMods.Add(new TargetModViewModel(group, tier) { IsExact = t.IsExact });
-        }
-        if (TargetMods.Count > 0) TargetListVisibility = Visibility.Visible;
-
         IsBlockingEnabled = s.IsBlockingEnabled;
         IsAutoMode        = s.IsAutoMode;
     }
@@ -579,14 +560,6 @@ public class MainViewModel : ViewModelBase
         s.TabletType = SelectedTabletType?.Type.ToString();
         s.Influence  = SelectedInfluence?.Influence.ToString();
         s.ClusterBase = SelectedClusterBase?.Tag;
-        s.Targets    = TargetMods
-            .Select(t => new Services.TargetSetting
-            {
-                GroupId = t.Group.GroupId,
-                Tier    = t.TargetTier.Tier,
-                IsExact = t.IsExact,
-            })
-            .ToList();
         s.IsBlockingEnabled = IsBlockingEnabled;
         s.IsAutoMode        = IsAutoMode;
     }

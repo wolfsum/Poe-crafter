@@ -36,30 +36,42 @@ public sealed class AutoCrafter
                 await Delay(300, 0, ct);
             ct.ThrowIfCancellationRequested();
 
-            // Pick up currency stack once at start (right-click puts the stack on cursor)
-            await MoveSmooth(GetCursor(), CurrencyPos, ct);
-            await Delay(60, 20, ct);
-            await ClickAsync(right: true, ct);
-            await Delay(200, 50, ct);
+            // Baseline check: read whatever is already on the item BEFORE touching
+            // currency. If it already satisfies every target (item was already
+            // rolled, or a previous session left it there), stop immediately
+            // instead of wasting one orb and only noticing after the fact.
+            {
+                int seqBefore = getEvalSeq();
+                SendCtrlC();
+                int waitedMs = 0;
+                while (!ct.IsCancellationRequested && getEvalSeq() == seqBefore && waitedMs < 1500)
+                {
+                    await Task.Delay(50, ct);
+                    waitedMs += 50;
+                }
+                if (shouldStop()) return; // already matches — no currency spent, no click
+            }
+
+            // Human flow: Shift is held for the ENTIRE session — releasing it
+            // drops the currency-apply mode, which is exactly what forced the
+            // old code to trek back to the currency slot between applies.
+            // Shift+right-click the currency once, then left-click the item
+            // repeatedly; Ctrl+C is sent with Shift still held. Only if the
+            // game refuses to copy under Shift do we fall back to releasing it
+            // for the copy window (and remember that for later cycles).
+            bool shiftFreeCopy = false;
+            ShiftDown();
+            await PickupCurrencyAsync(ct);
 
             while (!ct.IsCancellationRequested)
             {
                 if (!IsPoE2Active()) { await Delay(300, 0, ct); continue; }
 
-                // Shift+click applies currency repeatedly without dropping it
-                // from the cursor (plain click would pick the item up instead)
+                ShiftDown(); // no-op when already held
                 var target = Jitter(ItemPos, 4);
                 await MoveSmooth(GetCursor(), target, ct);
                 await Delay(Rng(40, 80), 0, ct);
-
-                try
-                {
-                    ShiftDown();
-                    await Delay(Rng(40, 70), 0, ct);   // let the game register Shift held
-                    await ClickAsync(right: false, ct);
-                    await Delay(Rng(40, 70), 0, ct);
-                }
-                finally { ShiftUp(); } // never leave Shift stuck (Ctrl+C must be Shift-free)
+                await ClickAsync(right: false, ct);
 
                 // Wait for PoE2 to process the orb use
                 await Delay(Rng(130, 180), 15, ct);
@@ -68,15 +80,38 @@ public sealed class AutoCrafter
                 // clipboard (PoE2 fires several clipboard events per copy — fixed
                 // delays raced and could skip the evaluation)
                 int seqBefore = getEvalSeq();
+                if (shiftFreeCopy) ShiftUp();
                 SendCtrlC();
+                bool evaluated = await WaitEval(getEvalSeq, seqBefore, 700, ct);
 
-                int waitedMs = 0;
-                while (!ct.IsCancellationRequested && getEvalSeq() == seqBefore && waitedMs < 1500)
+                if (!evaluated)
                 {
-                    await Task.Delay(50, ct);
-                    waitedMs += 50;
+                    // A single missed copy is almost always the game dropping the
+                    // Ctrl+C keystroke right after a click — resend in the SAME
+                    // mode first. (Falling straight to a Shift-free retry here
+                    // mis-diagnosed transient losses as "Shift blocks Ctrl+C" and
+                    // permanently reverted to the currency-item-currency trek.)
+                    SendCtrlC();
+                    evaluated = await WaitEval(getEvalSeq, seqBefore, 700, ct);
                 }
-                bool evaluated = getEvalSeq() != seqBefore;
+
+                if (!evaluated && !shiftFreeCopy)
+                {
+                    // Two shift-held copies ignored in a row — this build really
+                    // does want Shift released for Ctrl+C. Remember that, and
+                    // since releasing Shift drops the apply mode, restore it
+                    // immediately instead of burning three no-op clicks.
+                    ShiftUp();
+                    await Delay(60, 20, ct);
+                    SendCtrlC();
+                    evaluated = await WaitEval(getEvalSeq, seqBefore, 1200, ct);
+                    if (evaluated)
+                    {
+                        shiftFreeCopy = true;
+                        ShiftDown();
+                        await PickupCurrencyAsync(ct);
+                    }
+                }
                 await Delay(Rng(40, 80), 0, ct); // let UI state settle
 
                 if (shouldStop()) break; // target hit — STOP panel already shown
@@ -102,17 +137,26 @@ public sealed class AutoCrafter
 
                 sameHashCount = (hash != null && hash == prevHash && hash != "") ? sameHashCount + 1 : 0;
                 prevHash = hash;
-                if (sameHashCount >= 3)
+                if (sameHashCount >= 5)
                 {
                     stopReason = "Предмет не меняется — валюта закончилась?";
                     break;
                 }
+                if (sameHashCount == 3)
+                {
+                    // Three identical rolls in a row before concluding the apply-mode
+                    // dropped (missed Shift, lag) — re-pickup the stack once and
+                    // retry. A genuinely empty slot keeps the hash frozen and we
+                    // still stop at the fifth miss above.
+                    ShiftDown();
+                    await PickupCurrencyAsync(ct);
+                }
 
                 cycleCount++;
 
-                // Human-like occasional pause (every 8–18 clicks, 0.8–2.5s)
+                // Human-like occasional pause (every 8–18 clicks)
                 if (cycleCount % Rng(8, 18) == 0)
-                    await Delay(Rng(800, 2500), 200, ct);
+                    await Delay(Rng(600, 1500), 150, ct);
             }
         }
         catch (OperationCanceledException) { }
@@ -123,17 +167,45 @@ public sealed class AutoCrafter
         }
     }
 
+    // Wait until the app processed a clipboard event newer than seqBefore
+    private static async Task<bool> WaitEval(Func<int> getEvalSeq, int seqBefore, int timeoutMs, CancellationToken ct)
+    {
+        int waited = 0;
+        while (!ct.IsCancellationRequested && getEvalSeq() == seqBefore && waited < timeoutMs)
+        {
+            await Task.Delay(50, ct);
+            waited += 50;
+        }
+        return getEvalSeq() != seqBefore;
+    }
+
+    // Right-click the currency slot to put the stack on cursor (apply mode)
+    private async Task PickupCurrencyAsync(CancellationToken ct)
+    {
+        await MoveSmooth(GetCursor(), Jitter(CurrencyPos, 3), ct);
+        await Delay(60, 20, ct);
+        await ClickAsync(right: true, ct);
+        await Delay(200, 50, ct);
+    }
+
     // ── Mouse helpers ─────────────────────────────────────────────────
     private static async Task MoveSmooth(NativeMethods.POINT from, NativeMethods.POINT to, CancellationToken ct)
     {
-        int steps    = Rng(14, 22);
-        int totalMs  = Rng(70, 130);
+        float dist = MathF.Sqrt(MathF.Pow(to.X - from.X, 2) + MathF.Pow(to.Y - from.Y, 2));
+
+        // Short hops (in-slot jitter between applies) get a quick micro-move
+        // with tiny wobble so the cursor never wanders off the item
+        bool micro   = dist < 40;
+        int steps    = micro ? Rng(3, 6)   : Rng(14, 22);
+        int totalMs  = micro ? Rng(15, 35) : Rng(70, 130);
+        int w1       = micro ? 3 : 35;
+        int w2       = micro ? 2 : 25;
 
         // Cubic bezier control points — random slight curve
-        float cp1x = from.X + (to.X - from.X) * 0.3f + _rng.Next(-35, 35);
-        float cp1y = from.Y + (to.Y - from.Y) * 0.3f + _rng.Next(-35, 35);
-        float cp2x = from.X + (to.X - from.X) * 0.7f + _rng.Next(-25, 25);
-        float cp2y = from.Y + (to.Y - from.Y) * 0.7f + _rng.Next(-25, 25);
+        float cp1x = from.X + (to.X - from.X) * 0.3f + _rng.Next(-w1, w1);
+        float cp1y = from.Y + (to.Y - from.Y) * 0.3f + _rng.Next(-w1, w1);
+        float cp2x = from.X + (to.X - from.X) * 0.7f + _rng.Next(-w2, w2);
+        float cp2y = from.Y + (to.Y - from.Y) * 0.7f + _rng.Next(-w2, w2);
 
         for (int i = 1; i <= steps; i++)
         {

@@ -49,6 +49,12 @@ public abstract class GameProfile
     // Central weightKey-tag assembly for the current selection.
     public abstract IReadOnlySet<string> BuildTags(SlotSelection sel);
 
+    // Whether mods from a given source (mod file name / "embedded" / "tablet")
+    // may spawn on a slot. Needed because "default" weight keys are catch-alls
+    // WITHIN their item domain only — without this, item mods with default>0
+    // would leak into jewels and vice versa.
+    public virtual bool SourceAllowed(string source, ItemSlot slot) => true;
+
     protected static readonly IReadOnlyDictionary<ArmourBase, string> EmptyArmour   = new Dictionary<ArmourBase, string>();
     protected static readonly IReadOnlyDictionary<JewelType, string>  EmptyJewel    = new Dictionary<JewelType, string>();
     protected static readonly IReadOnlyDictionary<TabletType, string> EmptyTablet   = new Dictionary<TabletType, string>();

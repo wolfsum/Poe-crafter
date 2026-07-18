@@ -30,11 +30,29 @@ public class ModDatabase
         var tags = profile.BuildTags(selection);
 
         return AllMods
-            .Where(m => m.ItemTags.Any(tags.Contains))
+            .Where(m => profile.SourceAllowed(m.Source, selection.Slot) && CanSpawn(m, tags))
             .GroupBy(m => m.Group)
             .Select(g => new ModGroup(g.Key, g))
             .OrderBy(g => g.DisplayName)
             .ToList();
+    }
+
+    // Game spawn-weight semantics: walk the mod's weightKey list in order, the
+    // first key present in the item's tag set decides ("default" always matches).
+    // Universal mods like life are { fishing_rod=0, weapon=0, default=1000 } —
+    // the old ItemTags check dropped them everywhere because it ignored "default".
+    private static bool CanSpawn(ModDefinition m, IReadOnlySet<string> tags)
+    {
+        if (m.WeightKeys.Length == 0)
+            return m.ItemTags.Any(tags.Contains); // embedded mods: plain tag match
+
+        for (int i = 0; i < m.WeightKeys.Length && i < m.WeightVals.Length; i++)
+        {
+            var key = m.WeightKeys[i];
+            if (key == "default" || tags.Contains(key))
+                return m.WeightVals[i] > 0;
+        }
+        return false;
     }
 
     // Match a single mod line from clipboard against the database.

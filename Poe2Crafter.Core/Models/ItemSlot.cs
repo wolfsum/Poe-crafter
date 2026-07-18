@@ -44,4 +44,5 @@ public enum ItemSlot
     TwoHandMace,
     AbyssJewel,
     ClusterJewel,
+    ConvokingWand, // PoE1: wand base that additionally rolls minion mods
 }
