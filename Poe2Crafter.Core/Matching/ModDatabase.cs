@@ -30,7 +30,9 @@ public class ModDatabase
         var tags = profile.BuildTags(selection);
 
         return AllMods
-            .Where(m => profile.SourceAllowed(m.Source, selection.Slot) && CanSpawn(m, tags))
+            .Where(m => profile.SourceAllowed(m.Source, selection.Slot)
+                        && profile.ModAllowed(m)
+                        && CanSpawn(m, tags))
             .GroupBy(m => m.Group)
             .Select(g => new ModGroup(g.Key, g))
             .OrderBy(g => g.DisplayName)

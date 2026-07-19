@@ -212,6 +212,14 @@ public sealed class Poe1Profile : GameProfile
         _                     => source is "ModItem.lua" or "ModVeiled.lua",
     };
 
+    // Delve* (fossil-only) and Necropolis* (3.24 coffins, content removed) mods
+    // keep nonzero spawn weights in PoB data because those craft systems reuse
+    // the weight tables — but chaos/alt/essence rolling can never hit them.
+    // Verified against poedb: filtering these makes pool weights match exactly.
+    public override bool ModAllowed(ModDefinition mod) =>
+        !mod.Id.StartsWith("Delve", StringComparison.Ordinal) &&
+        !mod.Id.StartsWith("Necropolis", StringComparison.Ordinal);
+
     public override bool ShowBaseFor(ItemSlot slot)      => ArmourSlots.Contains(slot);
     public override bool ShowJewelTypeFor(ItemSlot slot) =>
         slot is ItemSlot.Jewel or ItemSlot.AbyssJewel or ItemSlot.ClusterJewel;

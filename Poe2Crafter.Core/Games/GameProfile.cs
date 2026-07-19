@@ -55,6 +55,10 @@ public abstract class GameProfile
     // would leak into jewels and vice versa.
     public virtual bool SourceAllowed(string source, ItemSlot slot) => true;
 
+    // Per-mod veto for mods that carry real spawn weights in PoB data but can
+    // never be hit by rolling currency (fossil-only, removed-league crafts, …).
+    public virtual bool ModAllowed(ModDefinition mod) => true;
+
     protected static readonly IReadOnlyDictionary<ArmourBase, string> EmptyArmour   = new Dictionary<ArmourBase, string>();
     protected static readonly IReadOnlyDictionary<JewelType, string>  EmptyJewel    = new Dictionary<JewelType, string>();
     protected static readonly IReadOnlyDictionary<TabletType, string> EmptyTablet   = new Dictionary<TabletType, string>();
