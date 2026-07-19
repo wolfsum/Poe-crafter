@@ -209,7 +209,10 @@ public sealed class Poe1Profile : GameProfile
         ItemSlot.Jewel        => source == "ModJewel.lua",
         ItemSlot.AbyssJewel   => source is "ModJewel.lua" or "ModJewelAbyss.lua",
         ItemSlot.ClusterJewel => source == "ModJewelCluster.lua",
-        _                     => source is "ModItem.lua" or "ModVeiled.lua",
+        // ModVeiled.lua (syndicate unveils) stays loaded for recognizing mods
+        // already on an item, but is never offered as a craft target — rolling
+        // currency can't hit veiled mods.
+        _                     => source == "ModItem.lua",
     };
 
     // Delve* (fossil-only) and Necropolis* (3.24 coffins, content removed) mods
