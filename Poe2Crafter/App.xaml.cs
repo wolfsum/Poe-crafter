@@ -26,12 +26,14 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
             ReportFatal(ex.ExceptionObject as Exception);
 
+        StartupLog.Begin();
         try
         {
             RunStartup(e);
         }
         catch (Exception ex)
         {
+            StartupLog.Write($"FATAL: {ex}");
             ReportFatal(ex);
             Shutdown();
         }
@@ -39,27 +41,35 @@ public partial class App : Application
 
     private void RunStartup(StartupEventArgs e)
     {
+        StartupLog.Write("Loading settings...");
         var settings = SettingsStore.Load();
+        StartupLog.Write($"Settings loaded. GameVersion={settings.GameVersion ?? "(none)"}");
 
         // First run (no saved game) → ask; otherwise use the saved profile
         var profile = GameProfiles.ByKey(settings.GameVersion);
         if (settings.GameVersion is null)
         {
+            StartupLog.Write("No saved game - showing picker.");
             var chosen = GamePicker.Choose();
-            if (chosen is null) { Shutdown(); return; }
+            if (chosen is null) { StartupLog.Write("Picker cancelled - exiting."); Shutdown(); return; }
             profile = chosen;
             settings.GameVersion = profile.Key;
             SettingsStore.Save(settings);
+            StartupLog.Write($"Picked {profile.Key}, settings saved.");
         }
+        StartupLog.Write($"Active profile: {profile.Key} ({profile.Name})");
 
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             profile.PobFolderName, "Data");
+        StartupLog.Write($"Data dir: {dataDir}");
 
         // The main mod file differs per game (PoE2: ModItem.lua, PoE1: ModExplicit.lua) —
         // ModFiles[0] is the profile's primary/probe file.
         var probeFile = profile.ModFiles[0];
-        if (!File.Exists(Path.Combine(dataDir, probeFile)))
+        var probeExists = File.Exists(Path.Combine(dataDir, probeFile));
+        StartupLog.Write($"Probe {probeFile}: {(probeExists ? "found" : "MISSING")}");
+        if (!probeExists)
         {
             // The mod database comes from Path of Building's data files — without
             // an installed PoB there is nothing to craft against. Explain instead
@@ -80,10 +90,12 @@ public partial class App : Application
                 Filter   = "Lua files (*.lua)|*.lua",
                 FileName = probeFile,
             };
-            if (dlg.ShowDialog() != true) { Shutdown(); return; }
+            if (dlg.ShowDialog() != true) { StartupLog.Write("File picker cancelled - exiting."); Shutdown(); return; }
             dataDir = Path.GetDirectoryName(dlg.FileName)!;
+            StartupLog.Write($"User picked data dir: {dataDir}");
         }
 
+        StartupLog.Write("Loading aux data...");
         profile.LoadAuxData(dataDir); // e.g. cluster jewel base catalog
 
         var mods = new List<ModDefinition>();
@@ -91,9 +103,15 @@ public partial class App : Application
         {
             var path = Path.Combine(dataDir, file);
             if (File.Exists(path))
-                mods.AddRange(PobModParser.ParseFile(path, source: file));
+            {
+                var parsed = PobModParser.ParseFile(path, source: file);
+                mods.AddRange(parsed);
+                StartupLog.Write($"Parsed {file}: {parsed.Count} mods");
+            }
+            else StartupLog.Write($"Skipped {file}: not present");
         }
         mods.AddRange(profile.EmbeddedMods);
+        StartupLog.Write($"Total mods (incl. {profile.EmbeddedMods.Count} embedded): {mods.Count}");
 
         if (mods.Count == 0)
         {
@@ -108,9 +126,13 @@ public partial class App : Application
             return;
         }
 
+        StartupLog.Write("Building mod database...");
         var db = new ModDatabase(mods);
+        StartupLog.Write("Building view model...");
         var vm = new MainViewModel(db, profile);
+        StartupLog.Write("Showing main window...");
         new MainWindow(vm).Show();
+        StartupLog.Write("Startup complete - window shown.");
     }
 
     // Log the crash to %APPDATA%\Poe2Crafter\crash.log and show it, so failures
