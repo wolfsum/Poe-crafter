@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>1.4.3</Version>
+    <Version>1.4.4</Version>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <!-- WPF native DLLs (PresentationNative, wpfgfx, D3DCompiler) must live INSIDE
          the single-file bundle — without this they're emitted next to the exe and

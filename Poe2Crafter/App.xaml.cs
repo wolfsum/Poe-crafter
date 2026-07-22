@@ -15,6 +15,30 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Surface any crash instead of the process vanishing with no window —
+        // the only way to diagnose failures on machines we can't reproduce on.
+        DispatcherUnhandledException += (_, ex) =>
+        {
+            ReportFatal(ex.Exception);
+            ex.Handled = true;
+            Shutdown();
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
+            ReportFatal(ex.ExceptionObject as Exception);
+
+        try
+        {
+            RunStartup(e);
+        }
+        catch (Exception ex)
+        {
+            ReportFatal(ex);
+            Shutdown();
+        }
+    }
+
+    private void RunStartup(StartupEventArgs e)
+    {
         var settings = SettingsStore.Load();
 
         // First run (no saved game) → ask; otherwise use the saved profile
@@ -71,8 +95,44 @@ public partial class App : Application
         }
         mods.AddRange(profile.EmbeddedMods);
 
+        if (mods.Count == 0)
+        {
+            MessageBox.Show(
+                $"Из данных PoB не удалось прочитать ни одного мода.\n\n" +
+                $"Папка: {dataDir}\n" +
+                $"Файлы: {string.Join(", ", profile.ModFiles)}\n\n" +
+                "Возможно, версия Path of Building несовместима — обнови PoB и перезапусти.",
+                $"{profile.Name} Crafter — пустая база модов",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            Shutdown();
+            return;
+        }
+
         var db = new ModDatabase(mods);
         var vm = new MainViewModel(db, profile);
         new MainWindow(vm).Show();
+    }
+
+    // Log the crash to %APPDATA%\Poe2Crafter\crash.log and show it, so failures
+    // on machines we can't debug on are diagnosable from the message alone.
+    private static void ReportFatal(Exception? ex)
+    {
+        var text = ex?.ToString() ?? "Unknown error";
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Poe2Crafter");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "crash.log"),
+                $"{DateTime.Now:u}\n{text}\n");
+        }
+        catch { /* logging must never mask the original error */ }
+
+        MessageBox.Show(
+            $"Приложение упало при запуске:\n\n{text}\n\n" +
+            "Скопируй этот текст (он также сохранён в %APPDATA%\\Poe2Crafter\\crash.log).",
+            "Poe2Crafter — ошибка",
+            MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }
