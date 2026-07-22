@@ -32,7 +32,10 @@ public partial class App : Application
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             profile.PobFolderName, "Data");
 
-        if (!File.Exists(Path.Combine(dataDir, "ModItem.lua")))
+        // The main mod file differs per game (PoE2: ModItem.lua, PoE1: ModExplicit.lua) —
+        // ModFiles[0] is the profile's primary/probe file.
+        var probeFile = profile.ModFiles[0];
+        if (!File.Exists(Path.Combine(dataDir, probeFile)))
         {
             // The mod database comes from Path of Building's data files — without
             // an installed PoB there is nothing to craft against. Explain instead
@@ -42,16 +45,16 @@ public partial class App : Application
                 $"{pob} не найден.\n\n" +
                 $"Ожидаемый путь с данными:\n{dataDir}\n\n" +
                 $"База модов берётся из файлов PoB — установи {pob} и перезапусти.\n\n" +
-                "Либо нажми OK и укажи ModItem.lua вручную (нестандартная установка).",
+                $"Либо нажми OK и укажи {probeFile} вручную (нестандартная установка).",
                 $"{profile.Name} Crafter — PoB не найден",
                 MessageBoxButton.OKCancel, MessageBoxImage.Warning);
             if (res != MessageBoxResult.OK) { Shutdown(); return; }
 
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Title    = $"Locate ModItem.lua ({profile.Name} PoB Data folder)",
+                Title    = $"Locate {probeFile} ({profile.Name} PoB Data folder)",
                 Filter   = "Lua files (*.lua)|*.lua",
-                FileName = "ModItem.lua",
+                FileName = probeFile,
             };
             if (dlg.ShowDialog() != true) { Shutdown(); return; }
             dataDir = Path.GetDirectoryName(dlg.FileName)!;

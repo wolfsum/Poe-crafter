@@ -11,8 +11,10 @@ public sealed class Poe1Profile : GameProfile
     public override string Name => "Path of Exile 1";
 
     public override string PobFolderName => "Path of Building Community";
+    // PoB1 renamed the main item-mod file ModItem.lua → ModExplicit.lua; the
+    // record format is unchanged. ModFiles[0] is also the existence probe.
     public override IReadOnlyList<string> ModFiles =>
-        ["ModItem.lua", "ModJewel.lua", "ModJewelAbyss.lua", "ModJewelCluster.lua", "ModVeiled.lua"];
+        ["ModExplicit.lua", "ModJewel.lua", "ModJewelAbyss.lua", "ModJewelCluster.lua", "ModVeiled.lua"];
 
     // PoE1 game tiers count down from the top — annotation numbers don't match
     // PoB's ascending ids, so tier inference falls back to value ranges
@@ -212,7 +214,7 @@ public sealed class Poe1Profile : GameProfile
         // ModVeiled.lua (syndicate unveils) stays loaded for recognizing mods
         // already on an item, but is never offered as a craft target — rolling
         // currency can't hit veiled mods.
-        _                     => source == "ModItem.lua",
+        _                     => source == "ModExplicit.lua",
     };
 
     // Delve* (fossil-only) and Necropolis* (3.24 coffins, content removed) mods
