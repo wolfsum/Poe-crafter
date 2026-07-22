@@ -16,7 +16,7 @@ public static class GamePicker
         var win = new Window
         {
             Title = "Choose game",
-            Width = 300,
+            Width = 400,
             SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ResizeMode = ResizeMode.NoResize,
@@ -40,9 +40,11 @@ public static class GamePicker
             var btn = new Button
             {
                 Content = profile.Name,
-                Padding = new Thickness(10, 8, 10, 8),
-                Margin = new Thickness(0, 0, 0, 8),
-                FontSize = 13,
+                Padding = new Thickness(14, 12, 14, 12),
+                Margin = new Thickness(0, 0, 0, 10),
+                FontSize = 15,
+                MinHeight = 44,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
             };
             btn.Click += (_, _) => { picked = profile; win.DialogResult = true; };
             panel.Children.Add(btn);
