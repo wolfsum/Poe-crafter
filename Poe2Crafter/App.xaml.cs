@@ -39,6 +39,13 @@ public partial class App : Application
         Exit += (_, ex) => StartupLog.Write($"App.Exit code={ex.ApplicationExitCode}");
         SessionEnding += (_, ex) => StartupLog.Write($"SessionEnding reason={ex.ReasonSessionEnding}");
 
+        // Showing the GamePicker via ShowDialog() before the main window exists
+        // would, under the default OnLastWindowClose mode, make WPF shut the app
+        // down the instant the picker closes — which then closes the main window
+        // right after it opens (seen only on first run, when the picker shows).
+        // Hold shutdown explicit until the main window is up.
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
         StartupLog.Begin();
         StartupLog.Write($"WPF render tier: {System.Windows.Media.RenderCapability.Tier >> 16} " +
                          $"(0=software, 1=partial HW, 2=full HW)");
@@ -146,7 +153,12 @@ public partial class App : Application
         StartupLog.Write("Building view model...");
         var vm = new MainViewModel(db, profile);
         StartupLog.Write("Showing main window...");
-        new MainWindow(vm).Show();
+        var window = new MainWindow(vm);
+        MainWindow = window;
+        window.Show();
+        // Main window is up — now normal "close window = exit app" behaviour is
+        // safe. (Before this, an early shutdown could have torn it down.)
+        ShutdownMode = ShutdownMode.OnLastWindowClose;
         StartupLog.Write("Startup complete - window shown.");
     }
 
