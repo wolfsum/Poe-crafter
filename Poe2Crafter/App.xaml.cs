@@ -19,14 +19,29 @@ public partial class App : Application
         // the only way to diagnose failures on machines we can't reproduce on.
         DispatcherUnhandledException += (_, ex) =>
         {
+            StartupLog.Write($"DispatcherUnhandledException: {ex.Exception}");
             ReportFatal(ex.Exception);
             ex.Handled = true;
             Shutdown();
         };
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
+        {
+            StartupLog.Write($"AppDomain.UnhandledException (terminating={ex.IsTerminating}): {ex.ExceptionObject}");
             ReportFatal(ex.ExceptionObject as Exception);
+        };
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ex) =>
+        {
+            StartupLog.Write($"UnobservedTaskException: {ex.Exception}");
+            ex.SetObserved();
+        };
+        // If the app shuts down cleanly this line lands in the log; if it does
+        // NOT appear yet the process is gone, something killed it from outside.
+        Exit += (_, ex) => StartupLog.Write($"App.Exit code={ex.ApplicationExitCode}");
+        SessionEnding += (_, ex) => StartupLog.Write($"SessionEnding reason={ex.ReasonSessionEnding}");
 
         StartupLog.Begin();
+        StartupLog.Write($"WPF render tier: {System.Windows.Media.RenderCapability.Tier >> 16} " +
+                         $"(0=software, 1=partial HW, 2=full HW)");
         try
         {
             RunStartup(e);

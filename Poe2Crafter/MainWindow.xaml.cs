@@ -35,8 +35,36 @@ public partial class MainWindow : Window
 
         LoadSettings();
 
+        // Full lifecycle trace: tells us whether the window actually paints
+        // (ContentRendered), where it lands on screen, and exactly how it goes
+        // away — a logged Closed/Closing means we shut ourselves down; silence
+        // after "window shown" means something killed the process from outside.
+        Loaded          += (_, _) => StartupLog.Write("Window.Loaded");
+        ContentRendered += (_, _) => StartupLog.Write(
+            $"Window.ContentRendered - Left={Left} Top={Top} W={ActualWidth} H={ActualHeight} " +
+            $"State={WindowState} Visible={IsVisible} " +
+            $"onScreen={IsOnScreen()} vScreen=({SystemParameters.VirtualScreenLeft},{SystemParameters.VirtualScreenTop} " +
+            $"{SystemParameters.VirtualScreenWidth}x{SystemParameters.VirtualScreenHeight})");
+        Activated       += (_, _) => StartupLog.Write("Window.Activated");
+        Deactivated     += (_, _) => StartupLog.Write("Window.Deactivated");
+        StateChanged    += (_, _) => StartupLog.Write($"Window.StateChanged -> {WindowState}");
+        Closing         += (_, ev) => StartupLog.Write($"Window.Closing (cancel={ev.Cancel})");
+        Closed          += (_, _) => StartupLog.Write("Window.Closed");
+
         UpdateService.CleanupOldBinary();
         _ = CheckForUpdateAsync(silent: true);
+    }
+
+    // Does the window rect intersect any part of the virtual desktop? If not,
+    // it opened off-screen (e.g. saved position from a monitor that's gone).
+    private bool IsOnScreen()
+    {
+        var l = SystemParameters.VirtualScreenLeft;
+        var t = SystemParameters.VirtualScreenTop;
+        var r = l + SystemParameters.VirtualScreenWidth;
+        var b = t + SystemParameters.VirtualScreenHeight;
+        return Left < r && Left + Math.Max(ActualWidth, 100) > l &&
+               Top  < b && Top  + Math.Max(ActualHeight, 100) > t;
     }
 
     // ── Game switch ───────────────────────────────────────────────────
@@ -137,13 +165,15 @@ public partial class MainWindow : Window
 
     protected override void OnSourceInitialized(EventArgs e)
     {
+        StartupLog.Write("OnSourceInitialized: attaching clipboard watcher...");
         base.OnSourceInitialized(e);
         _watcher.Attach(this);
         _watcher.Changed += OnClipboardChanged;
 
         var source = (HwndSource)PresentationSource.FromVisual(this)!;
         source.AddHook(WndProc);
-        NativeMethods.RegisterHotKey(source.Handle, NativeMethods.HOTKEY_TOGGLE, 0, NativeMethods.VK_F10);
+        var hotkeyOk = NativeMethods.RegisterHotKey(source.Handle, NativeMethods.HOTKEY_TOGGLE, 0, NativeMethods.VK_F10);
+        StartupLog.Write($"OnSourceInitialized done. F10 hotkey registered={hotkeyOk}");
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
