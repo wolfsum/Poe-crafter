@@ -229,11 +229,24 @@ public sealed class AutoCrafter
 
     private static void SendButton(bool right, bool down)
     {
+        if (down) LogInput(right ? "R-click (currency pickup)" : "L-click (apply)");
         uint flag = right
             ? (down ? NativeMethods.MOUSEEVENTF_RIGHTDOWN : NativeMethods.MOUSEEVENTF_RIGHTUP)
             : (down ? NativeMethods.MOUSEEVENTF_LEFTDOWN  : NativeMethods.MOUSEEVENTF_LEFTUP);
         var inputs = new[] { MouseInput(flag) };
         NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+    }
+
+    // Millisecond-timestamped trace of every physical input the crafter emits,
+    // so a "double click" heard by ear shows up as two lines with a tiny delta —
+    // and we can see whether it's two applies or an apply + a currency re-pickup.
+    private static long _lastInputTick;
+    private static void LogInput(string what)
+    {
+        long now   = Environment.TickCount64;
+        long delta = _lastInputTick == 0 ? 0 : now - _lastInputTick;
+        _lastInputTick = now;
+        StartupLog.Write($"INPUT {what}  (Δ{delta}ms since last input)");
     }
 
     private bool _shiftHeld;
@@ -245,6 +258,7 @@ public sealed class AutoCrafter
     // modifier held across a mouse click (the click then quick-moves the item)
     private static void SendShiftScan(bool down)
     {
+        LogInput(down ? "Shift DOWN" : "Shift UP");
         ushort scan = (ushort)NativeMethods.MapVirtualKey(NativeMethods.VK_SHIFT, NativeMethods.MAPVK_VK_TO_VSC);
         var inputs = new NativeMethods.INPUT[]
         {
@@ -266,6 +280,7 @@ public sealed class AutoCrafter
 
     private static void SendCtrlC()
     {
+        LogInput("Ctrl+C (read item)");
         var inputs = new NativeMethods.INPUT[]
         {
             new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_CONTROL } } },
