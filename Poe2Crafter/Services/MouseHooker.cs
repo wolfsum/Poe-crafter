@@ -5,37 +5,24 @@ namespace Poe2Crafter.Services;
 
 public sealed class MouseHooker : IDisposable
 {
-    private const int    WH_MOUSE_LL    = 14;
-    private const int    WM_LBUTTONDOWN = 0x0201;
-    private const int    WM_MOUSEMOVE   = 0x0200;
-    private const double BlockRadius    = 200; // pixels to move before auto-unblock
+    private const int WH_MOUSE_LL    = 14;
+    private const int WM_LBUTTONDOWN = 0x0201;
 
     private readonly NativeMethods.LowLevelMouseProc _proc; // keep ref → prevent GC
 
     private IntPtr _hook;
     private IntPtr _ownHwnd;
     private bool   _running;   // hook belongs to a Start/Stop session (not just capture)
-
-    private bool                _blocking;
-    private NativeMethods.POINT _blockOrigin;
-    private bool                _capturing;
+    private bool   _capturing;
 
     // Foreground-window check cache — re-evaluated only when focus changes
     private IntPtr _cachedFg;
     private bool   _cachedInPoe2;
 
+    // Fires on a real (non-injected) left click in the game while a session is
+    // running — the reader uses it to copy-evaluate the item after each craft.
     public event Action?                      ClickPassed;
     public event Action<NativeMethods.POINT>? PositionCaptured;
-
-    public bool Blocking
-    {
-        get => _blocking;
-        set
-        {
-            _blocking = value;
-            if (value) NativeMethods.GetCursorPos(out _blockOrigin);
-        }
-    }
 
     public MouseHooker() => _proc = HookProc;
 
@@ -63,8 +50,7 @@ public sealed class MouseHooker : IDisposable
 
     public void Stop()
     {
-        _running  = false;
-        _blocking = false;
+        _running = false;
         Unhook();
     }
 
@@ -97,20 +83,12 @@ public sealed class MouseHooker : IDisposable
                         return (IntPtr)1; // swallow calibration click
                     }
 
-                    if (_running && InPoe2(fg))
+                    // Real click in the game during a session → let it through
+                    // and notify the reader so it copy-evaluates the result.
+                    if (_running && InPoe2(fg) && wParam == (IntPtr)WM_LBUTTONDOWN)
                     {
-                        if (wParam == (IntPtr)WM_MOUSEMOVE && _blocking)
-                        {
-                            var dx = ms.pt.X - _blockOrigin.X;
-                            var dy = ms.pt.Y - _blockOrigin.Y;
-                            if (dx * dx + dy * dy > BlockRadius * BlockRadius)
-                                _blocking = false;
-                        }
-                        else if (wParam == (IntPtr)WM_LBUTTONDOWN)
-                        {
-                            if (_blocking) return (IntPtr)1;
-                            ClickPassed?.Invoke();
-                        }
+                        StartupLog.Write($"[MANUAL] click in game at ({ms.pt.X},{ms.pt.Y}) — reading");
+                        ClickPassed?.Invoke();
                     }
                 }
             }

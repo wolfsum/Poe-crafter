@@ -17,8 +17,6 @@ public partial class MainWindow : Window
     private readonly MouseHooker      _hooker  = new();
     private readonly AutoCrafter      _crafter = new();
     private DispatcherTimer? _clipTimer;
-    private DispatcherTimer? _unblockTimer;
-    private bool _calibratingCurrency;
 
     public MainWindow(MainViewModel vm)
     {
@@ -28,8 +26,6 @@ public partial class MainWindow : Window
         _hooker.ClickPassed       += OnLeftClickPassed;
         _hooker.PositionCaptured  += OnPositionCaptured;
         _vm.PropertyChanged       += OnVmPropertyChanged;
-        _vm.SetCurrencyCommand.Executed += () => _calibratingCurrency = true;
-        _vm.SetItemCommand.Executed     += () => _calibratingCurrency = false;
         _vm.UpdateCommand.Executed      += OnUpdateRequested;
         _vm.SwitchGameCommand.Executed  += OnSwitchGame;
 
@@ -142,9 +138,20 @@ public partial class MainWindow : Window
         _vm.ApplySettings(s);
 
         _crafter.CurrencyPos = new NativeMethods.POINT { X = s.CurrencyX, Y = s.CurrencyY };
-        _crafter.ItemPos     = new NativeMethods.POINT { X = s.ItemX,     Y = s.ItemY };
         _vm.CurrencySet      = s.CurrencySet;
-        _vm.ItemSet          = s.ItemSet;
+
+        // Restore the item queue. Migrate a legacy single-item position into a
+        // one-slot queue when no slot list was saved.
+        var slots = s.ItemSlots;
+        if (slots.Count == 0 && s.ItemSet)
+            slots = [new ItemSlotSetting { X = s.ItemX, Y = s.ItemY, IsSet = true }];
+
+        _vm.ItemCount = Math.Max(MainViewModel.MinItems, slots.Count);
+        for (int i = 0; i < _vm.ItemSlots.Count && i < slots.Count; i++)
+        {
+            _vm.ItemSlots[i].Pos   = new NativeMethods.POINT { X = slots[i].X, Y = slots[i].Y };
+            _vm.ItemSlots[i].IsSet = slots[i].IsSet;
+        }
     }
 
     private void SaveSettings()
@@ -154,10 +161,10 @@ public partial class MainWindow : Window
         s.GameVersion = _gameOverride ?? _vm.GameKey;
         s.CurrencyX   = _crafter.CurrencyPos.X;
         s.CurrencyY   = _crafter.CurrencyPos.Y;
-        s.ItemX       = _crafter.ItemPos.X;
-        s.ItemY       = _crafter.ItemPos.Y;
         s.CurrencySet = _vm.CurrencySet;
-        s.ItemSet     = _vm.ItemSet;
+        s.ItemSlots   = _vm.ItemSlots
+            .Select(sl => new ItemSlotSetting { X = sl.Pos.X, Y = sl.Pos.Y, IsSet = sl.IsSet })
+            .ToList();
         s.WindowLeft  = Left;
         s.WindowTop   = Top;
         SettingsStore.Save(s);
@@ -206,10 +213,8 @@ public partial class MainWindow : Window
             catch (COMException) { }
             finally
             {
-                // Sync blocking state after every clipboard read
-                _unblockTimer?.Stop();
                 if (!_vm.IsAutoMode && _vm.IsRunning)
-                    _hooker.Blocking = _vm.IsStop && _vm.IsBlockingEnabled;
+                    StartupLog.Write($"[MANUAL] item evaluated -> IsStop={_vm.IsStop} hash={Short(_vm.LastItemHash)}");
             }
         };
         _clipTimer.Start();
@@ -226,15 +231,19 @@ public partial class MainWindow : Window
                 _hooker.Start(hwnd);
                 if (_vm.IsAutoMode)
                 {
-                    if (!_vm.CurrencySet || !_vm.ItemSet)
+                    if (!_vm.CurrencySet || !_vm.AllItemsSet)
                     {
                         _vm.IsRunning = false;
                         return;
                     }
+                    _crafter.ItemPositions = _vm.ItemSlots.Select(sl => sl.Pos).ToList();
+                    int total = _vm.ItemSlots.Count;
                     _crafter.Start(
                         () => _vm.IsStop,
                         () => _vm.LastItemHash,
                         () => _vm.EvalSeq,
+                        idx => Dispatcher.Invoke(() =>
+                            _vm.AutoProgress = total > 1 ? $"Крафчу {idx + 1} / {total}" : ""),
                         reason => Dispatcher.Invoke(() =>
                         {
                             _vm.IsRunning = false;
@@ -248,11 +257,6 @@ public partial class MainWindow : Window
                 _hooker.Stop();
             }
         }
-        else if (e.PropertyName == nameof(MainViewModel.IsStop))
-        {
-            if (_vm.IsRunning && !_vm.IsAutoMode)
-                _hooker.Blocking = _vm.IsStop && _vm.IsBlockingEnabled;
-        }
         else if (e.PropertyName == nameof(MainViewModel.IsCapturing) && _vm.IsCapturing)
         {
             _hooker.StartCapture(hwnd);
@@ -263,53 +267,78 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (_calibratingCurrency)
+            if (_vm.CapturingCurrency)
             {
-                _crafter.CurrencyPos      = pt;
-                _vm.CurrencySet           = true;
-                _calibratingCurrency      = false;
+                _crafter.CurrencyPos = pt;
+                _vm.CurrencySet      = true;
             }
-            else
+            else if (_vm.CapturingSlot is { } slot)
             {
-                _crafter.ItemPos = pt;
-                _vm.ItemSet      = true;
+                slot.Pos   = pt;
+                slot.IsSet = true;
             }
             _vm.IsCapturing = false;
         });
     }
 
-    // Called when a left click passes through the hook — auto-send Ctrl+C after delay
-    private void OnLeftClickPassed()
+    private int _clickGen; // bumps per click so a newer click supersedes an older read loop
+
+    // Manual mode: after each real click in the game, copy-evaluate the item so
+    // the status panel updates and the beep fires the instant a target is hit.
+    // Ctrl+C is re-sent until an evaluation lands (the game sometimes drops the
+    // keystroke). No mouse blocking — a low-level hook can't stop PoE's raw
+    // input anyway; the beep is the alert.
+    private async void OnLeftClickPassed()
     {
-        if (_vm.IsBlockingEnabled)
+        int gen = ++_clickGen;
+        int seqBefore = _vm.EvalSeq;
+        await Task.Delay(CtrlCDelayMs);
+
+        for (int attempt = 1; attempt <= 4; attempt++)
         {
-            _hooker.Blocking = true;
-            // Safety: a click that produced no clipboard update (ground, stash tab…)
-            // must not leave the block stuck
-            _unblockTimer?.Stop();
-            _unblockTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
-            _unblockTimer.Tick += (_, _) =>
-            {
-                _unblockTimer!.Stop();
-                if (!_vm.IsStop) _hooker.Blocking = false;
-            };
-            _unblockTimer.Start();
+            if (gen != _clickGen) return; // a newer click took over
+
+            await SendCtrlCAsync();
+
+            for (int w = 0; w < 12 && _vm.EvalSeq == seqBefore; w++)
+                await Task.Delay(40);
+
+            if (gen != _clickGen) return;
+            if (_vm.EvalSeq != seqBefore) return; // read landed — VM applied the verdict
         }
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(CtrlCDelayMs) };
-        timer.Tick += (_, _) => { timer.Stop(); SendCtrlC(); };
-        timer.Start();
     }
 
-    private static void SendCtrlC()
+    // First 8 chars of a hash for compact logs
+    private static string Short(string? h) => string.IsNullOrEmpty(h) ? "<none>" : h[..Math.Min(8, h.Length)];
+
+    // Copy the hovered item with Ctrl+C. Do NOT touch the user's held Shift:
+    // AutoCrafter copies fine with Shift held the whole time, so Shift+Ctrl+C
+    // copies correctly — releasing it here only dropped the currency-apply hold.
+    // The one thing that matters is holding C for a beat instead of a 0ms batch,
+    // which the game's per-frame input polling would miss. Reliability comes
+    // from the caller RE-SENDING this until an evaluation actually lands.
+    private static async Task SendCtrlCAsync()
+    {
+        SendKey(NativeMethods.VK_CONTROL, down: true);
+        await Task.Delay(20);
+        SendKey(NativeMethods.VK_C, down: true);
+        await Task.Delay(50);
+        SendKey(NativeMethods.VK_C, down: false);
+        await Task.Delay(20);
+        SendKey(NativeMethods.VK_CONTROL, down: false);
+    }
+
+    private static void SendKey(int vk, bool down)
     {
         var inputs = new NativeMethods.INPUT[]
         {
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_CONTROL } } },
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_C } } },
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_C,       dwFlags = NativeMethods.KEYEVENTF_KEYUP } } },
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_CONTROL, dwFlags = NativeMethods.KEYEVENTF_KEYUP } } },
+            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new()
+            {
+                wVk = (ushort)vk,
+                dwFlags = down ? 0 : NativeMethods.KEYEVENTF_KEYUP,
+            } } },
         };
-        NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
     }
 
     protected override void OnClosed(EventArgs e)

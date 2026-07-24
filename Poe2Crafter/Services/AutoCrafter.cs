@@ -8,156 +8,61 @@ public sealed class AutoCrafter
     private CancellationTokenSource? _cts;
 
     public NativeMethods.POINT CurrencyPos { get; set; }
-    public NativeMethods.POINT ItemPos     { get; set; }
+
+    // The queue of item slots to craft, in order. Each is rolled until its
+    // targets are hit, then the crafter advances to the next.
+    public IReadOnlyList<NativeMethods.POINT> ItemPositions { get; set; } = [];
 
     public bool IsRunning => _cts is { IsCancellationRequested: false };
 
-    public void Start(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq, Action<string?> onStopped)
+    public void Start(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq,
+                      Action<int> onItemStart, Action<string?> onStopped)
     {
         _cts = new CancellationTokenSource();
-        Task.Run(() => RunLoop(shouldStop, getItemHash, getEvalSeq, onStopped, _cts.Token));
+        Task.Run(() => RunLoop(shouldStop, getItemHash, getEvalSeq, onItemStart, onStopped, _cts.Token));
     }
 
     public void Stop() => _cts?.Cancel();
 
     // ── Main loop ─────────────────────────────────────────────────────
-    private async Task RunLoop(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq, Action<string?> onStopped, CancellationToken ct)
+    private async Task RunLoop(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq,
+                               Action<int> onItemStart, Action<string?> onStopped, CancellationToken ct)
     {
         string? stopReason = null;
         try
         {
-            int cycleCount     = 0;
-            int sameHashCount  = 0;
-            int failedCycles   = 0;
-            string? prevHash   = null;
+            var items = ItemPositions;
+            if (items.Count == 0) { onStopped("Не задана позиция предмета"); return; }
 
             // Don't touch the mouse until PoE2 is the active window
             while (!ct.IsCancellationRequested && !IsPoE2Active())
                 await Delay(300, 0, ct);
             ct.ThrowIfCancellationRequested();
 
-            // Baseline check: read whatever is already on the item BEFORE touching
-            // currency. If it already satisfies every target (item was already
-            // rolled, or a previous session left it there), stop immediately
-            // instead of wasting one orb and only noticing after the fact.
-            {
-                int seqBefore = getEvalSeq();
-                SendCtrlC();
-                int waitedMs = 0;
-                while (!ct.IsCancellationRequested && getEvalSeq() == seqBefore && waitedMs < 1500)
-                {
-                    await Task.Delay(50, ct);
-                    waitedMs += 50;
-                }
-                if (shouldStop()) return; // already matches — no currency spent, no click
-            }
-
             // Human flow: Shift is held for the ENTIRE session — releasing it
             // drops the currency-apply mode, which is exactly what forced the
             // old code to trek back to the currency slot between applies.
-            // Shift+right-click the currency once, then left-click the item
-            // repeatedly; Ctrl+C is sent with Shift still held. Only if the
-            // game refuses to copy under Shift do we fall back to releasing it
-            // for the copy window (and remember that for later cycles).
+            // Shift+right-click the currency once, then left-click each item
+            // repeatedly; the held stack applies to every slot in the queue.
+            // Ctrl+C is sent with Shift still held. Only if the game refuses to
+            // copy under Shift do we fall back to releasing it for the copy
+            // window (and remember that for later cycles).
             bool shiftFreeCopy = false;
             ShiftDown();
             await PickupCurrencyAsync(ct);
 
-            while (!ct.IsCancellationRequested)
+            // Craft each queued item in turn; advance once its targets are hit.
+            for (int idx = 0; idx < items.Count; idx++)
             {
-                if (!IsPoE2Active()) { await Delay(300, 0, ct); continue; }
-
-                ShiftDown(); // no-op when already held
-                var target = Jitter(ItemPos, 4);
-                await MoveSmooth(GetCursor(), target, ct);
-                await Delay(Rng(40, 80), 0, ct);
-                await ClickAsync(right: false, ct);
-
-                // Wait for PoE2 to process the orb use
-                await Delay(Rng(130, 180), 15, ct);
-
-                // Copy item stats and wait until the app actually evaluated the
-                // clipboard (PoE2 fires several clipboard events per copy — fixed
-                // delays raced and could skip the evaluation)
-                int seqBefore = getEvalSeq();
-                if (shiftFreeCopy) ShiftUp();
-                SendCtrlC();
-                bool evaluated = await WaitEval(getEvalSeq, seqBefore, 700, ct);
-
-                if (!evaluated)
-                {
-                    // A single missed copy is almost always the game dropping the
-                    // Ctrl+C keystroke right after a click — resend in the SAME
-                    // mode first. (Falling straight to a Shift-free retry here
-                    // mis-diagnosed transient losses as "Shift blocks Ctrl+C" and
-                    // permanently reverted to the currency-item-currency trek.)
-                    SendCtrlC();
-                    evaluated = await WaitEval(getEvalSeq, seqBefore, 700, ct);
-                }
-
-                if (!evaluated && !shiftFreeCopy)
-                {
-                    // Two shift-held copies ignored in a row — this build really
-                    // does want Shift released for Ctrl+C. Remember that, and
-                    // since releasing Shift drops the apply mode, restore it
-                    // immediately instead of burning three no-op clicks.
-                    ShiftUp();
-                    await Delay(60, 20, ct);
-                    SendCtrlC();
-                    evaluated = await WaitEval(getEvalSeq, seqBefore, 1200, ct);
-                    if (evaluated)
-                    {
-                        shiftFreeCopy = true;
-                        ShiftDown();
-                        await PickupCurrencyAsync(ct);
-                    }
-                }
-                await Delay(Rng(40, 80), 0, ct); // let UI state settle
-
-                if (shouldStop()) break; // target hit — STOP panel already shown
-
-                if (!evaluated)
-                {
-                    if (++failedCycles >= 5)
-                    {
-                        stopReason = "Предмет не считывается — проверь позицию Item";
-                        break;
-                    }
-                    continue;
-                }
-
-                // Safety: detect parse failures (empty hash) and item hash unchanged
-                var hash = getItemHash();
-                failedCycles = (hash == null || hash == "") ? failedCycles + 1 : 0;
-                if (failedCycles >= 5)
-                {
-                    stopReason = "Не читается предмет — проверь позицию Item";
-                    break;
-                }
-
-                sameHashCount = (hash != null && hash == prevHash && hash != "") ? sameHashCount + 1 : 0;
-                prevHash = hash;
-                if (sameHashCount >= 5)
-                {
-                    stopReason = "Предмет не меняется — валюта закончилась?";
-                    break;
-                }
-                if (sameHashCount == 3)
-                {
-                    // Three identical rolls in a row before concluding the apply-mode
-                    // dropped (missed Shift, lag) — re-pickup the stack once and
-                    // retry. A genuinely empty slot keeps the hash frozen and we
-                    // still stop at the fifth miss above.
-                    ShiftDown();
-                    await PickupCurrencyAsync(ct);
-                }
-
-                cycleCount++;
-
-                // Human-like occasional pause (every 8–18 clicks)
-                if (cycleCount % Rng(8, 18) == 0)
-                    await Delay(Rng(600, 1500), 150, ct);
+                ct.ThrowIfCancellationRequested();
+                onItemStart(idx);
+                (bool matched, stopReason, shiftFreeCopy) =
+                    await RunItem(items[idx], shiftFreeCopy, shouldStop, getItemHash, getEvalSeq, ct);
+                if (!matched) break; // hit a failure — surface the reason and stop
             }
+
+            if (stopReason == null && !ct.IsCancellationRequested && items.Count > 1)
+                stopReason = $"Готово — скрафчено предметов: {items.Count}";
         }
         catch (OperationCanceledException) { }
         finally
@@ -165,6 +70,123 @@ public sealed class AutoCrafter
             ShiftUp(); // safety: never leave Shift physically held after stop
             onStopped(stopReason);
         }
+    }
+
+    // Roll a single item slot until its targets are hit. Returns whether it
+    // matched, a stop reason on failure (null on match), and the (possibly
+    // updated) shift-free-copy mode to carry into the next item.
+    private async Task<(bool matched, string? reason, bool shiftFreeCopy)> RunItem(
+        NativeMethods.POINT itemPos, bool shiftFreeCopy,
+        Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq, CancellationToken ct)
+    {
+        int cycleCount    = 0;
+        int sameHashCount = 0;
+        int failedCycles  = 0;
+        string? prevHash  = null;
+
+        // Baseline check: read what's already on this item BEFORE spending an orb.
+        // If it already satisfies every target (previous session, or an earlier
+        // queue item shares its base), advance without wasting currency.
+        {
+            await MoveSmooth(GetCursor(), Jitter(itemPos, 4), ct);
+            await Delay(Rng(40, 80), 0, ct);
+            int seqBefore = getEvalSeq();
+            if (shiftFreeCopy) ShiftUp();
+            await SendCtrlCAsync(ct);
+            bool ev = await WaitEval(getEvalSeq, seqBefore, 1500, ct);
+            if (shiftFreeCopy) { ShiftDown(); await PickupCurrencyAsync(ct); }
+            if (ev && shouldStop()) return (true, null, shiftFreeCopy); // already matches
+        }
+
+        while (!ct.IsCancellationRequested)
+        {
+            if (!IsPoE2Active()) { await Delay(300, 0, ct); continue; }
+
+            ShiftDown(); // no-op when already held
+            var target = Jitter(itemPos, 4);
+            await MoveSmooth(GetCursor(), target, ct);
+            await Delay(Rng(40, 80), 0, ct);
+            await ClickAsync(right: false, ct);
+
+            // Wait for PoE2 to process the orb use
+            await Delay(Rng(130, 180), 15, ct);
+
+            // Copy item stats and wait until the app actually evaluated the
+            // clipboard (PoE2 fires several clipboard events per copy — fixed
+            // delays raced and could skip the evaluation)
+            int seqBefore = getEvalSeq();
+            if (shiftFreeCopy) ShiftUp();
+            await SendCtrlCAsync(ct);
+            bool evaluated = await WaitEval(getEvalSeq, seqBefore, 700, ct);
+
+            if (!evaluated)
+            {
+                // A single missed copy is almost always the game dropping the
+                // Ctrl+C keystroke right after a click — resend in the SAME
+                // mode first. (Falling straight to a Shift-free retry here
+                // mis-diagnosed transient losses as "Shift blocks Ctrl+C" and
+                // permanently reverted to the currency-item-currency trek.)
+                await SendCtrlCAsync(ct);
+                evaluated = await WaitEval(getEvalSeq, seqBefore, 700, ct);
+            }
+
+            if (!evaluated && !shiftFreeCopy)
+            {
+                // Two shift-held copies ignored in a row — this build really
+                // does want Shift released for Ctrl+C. Remember that, and
+                // since releasing Shift drops the apply mode, restore it
+                // immediately instead of burning three no-op clicks.
+                ShiftUp();
+                await Delay(60, 20, ct);
+                await SendCtrlCAsync(ct);
+                evaluated = await WaitEval(getEvalSeq, seqBefore, 1200, ct);
+                if (evaluated)
+                {
+                    shiftFreeCopy = true;
+                    ShiftDown();
+                    await PickupCurrencyAsync(ct);
+                }
+            }
+            await Delay(Rng(40, 80), 0, ct); // let UI state settle
+
+            if (shouldStop()) return (true, null, shiftFreeCopy); // target hit
+
+            if (!evaluated)
+            {
+                if (++failedCycles >= 5)
+                    return (false, "Предмет не считывается — проверь позицию Item", shiftFreeCopy);
+                continue;
+            }
+
+            // Safety: detect parse failures (empty hash) and item hash unchanged
+            var hash = getItemHash();
+            failedCycles = (hash == null || hash == "") ? failedCycles + 1 : 0;
+            if (failedCycles >= 5)
+                return (false, "Не читается предмет — проверь позицию Item", shiftFreeCopy);
+
+            sameHashCount = (hash != null && hash == prevHash && hash != "") ? sameHashCount + 1 : 0;
+            prevHash = hash;
+            if (sameHashCount >= 5)
+                return (false, "Предмет не меняется — валюта закончилась?", shiftFreeCopy);
+            if (sameHashCount == 3)
+            {
+                // Three identical rolls in a row before concluding the apply-mode
+                // dropped (missed Shift, lag) — re-pickup the stack once and
+                // retry. A genuinely empty slot keeps the hash frozen and we
+                // still stop at the fifth miss above.
+                ShiftDown();
+                await PickupCurrencyAsync(ct);
+            }
+
+            cycleCount++;
+
+            // Human-like occasional pause (every 8–18 clicks)
+            if (cycleCount % Rng(8, 18) == 0)
+                await Delay(Rng(600, 1500), 150, ct);
+        }
+
+        ct.ThrowIfCancellationRequested();
+        return (false, null, shiftFreeCopy);
     }
 
     // Wait until the app processed a clipboard event newer than seqBefore
@@ -278,17 +300,34 @@ public sealed class AutoCrafter
         u    = new() { mi = new() { dwFlags = flags } }
     };
 
-    private static void SendCtrlC()
+    // Sending Ctrl-down/C-down/C-up/Ctrl-up as one instant SendInput batch held
+    // C for ~0ms — the game's per-frame input polling missed it more often than
+    // not (logs showed ~75% of copies needing a resend). A real keypress holds
+    // for at least a frame or two, so this explicitly holds C down for a beat,
+    // same as ClickAsync already does for mouse buttons.
+    private static async Task SendCtrlCAsync(CancellationToken ct)
     {
         LogInput("Ctrl+C (read item)");
+        SendKey(NativeMethods.VK_CONTROL, down: true);
+        await Delay(20, 5, ct);
+        SendKey(NativeMethods.VK_C, down: true);
+        await Delay(50, 15, ct);
+        SendKey(NativeMethods.VK_C, down: false);
+        await Delay(20, 5, ct);
+        SendKey(NativeMethods.VK_CONTROL, down: false);
+    }
+
+    private static void SendKey(int vk, bool down)
+    {
         var inputs = new NativeMethods.INPUT[]
         {
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_CONTROL } } },
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_C } } },
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_C,       dwFlags = NativeMethods.KEYEVENTF_KEYUP } } },
-            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new() { wVk = NativeMethods.VK_CONTROL, dwFlags = NativeMethods.KEYEVENTF_KEYUP } } },
+            new() { type = NativeMethods.INPUT_KEYBOARD, u = new() { ki = new()
+            {
+                wVk = (ushort)vk,
+                dwFlags = down ? 0 : NativeMethods.KEYEVENTF_KEYUP,
+            } } },
         };
-        NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        NativeMethods.SendInput(1, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
     }
 
     // ── Utilities ─────────────────────────────────────────────────────

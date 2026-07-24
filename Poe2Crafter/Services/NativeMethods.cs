@@ -76,6 +76,10 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
+    // High bit set → key is physically down right now
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
     public const uint INPUT_KEYBOARD    = 1;
     public const uint KEYEVENTF_KEYUP   = 0x0002;
     public const uint KEYEVENTF_SCANCODE= 0x0008;

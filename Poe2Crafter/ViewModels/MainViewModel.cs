@@ -206,6 +206,7 @@ public class MainViewModel : ViewModelBase
             {
                 StatusVisibility = Visibility.Collapsed;
                 IsStop = false;
+                AutoProgress = "";
             }
         }
     }
@@ -214,8 +215,28 @@ public class MainViewModel : ViewModelBase
     public bool IsStop
     {
         get => _isStop;
-        private set => Set(ref _isStop, value);
+        private set
+        {
+            bool wasStop = _isStop;
+            Set(ref _isStop, value);
+            // Audible alert on the GO→STOP transition. While crafting you watch
+            // the game, not this window — the red STOP panel is out of view, so
+            // sound is the only feedback that reaches you. Fired once per hit,
+            // not on every clipboard eval while already stopped.
+            if (value && !wasStop) PlayStopAlert();
+        }
     }
+
+    private static void PlayStopAlert() => Task.Run(() =>
+    {
+        try
+        {
+            // Two crisp high beeps — cuts through game audio
+            Console.Beep(1200, 150);
+            Console.Beep(1600, 250);
+        }
+        catch { /* no console/audio device — never break crafting over a beep */ }
+    });
 
     public string RunButtonText => IsRunning ? "■  Stop" : "▶  Start";
 
@@ -225,13 +246,6 @@ public class MainViewModel : ViewModelBase
     // instead of fixed delays (PoE2 fires several clipboard events per copy)
     private int _evalSeq;
     public int EvalSeq => _evalSeq;
-
-    private bool _isBlockingEnabled = true;
-    public bool IsBlockingEnabled
-    {
-        get => _isBlockingEnabled;
-        set => Set(ref _isBlockingEnabled, value);
-    }
 
     // ── Auto-craft ────────────────────────────────────────────────────
     private bool _isAutoMode;
@@ -259,12 +273,49 @@ public class MainViewModel : ViewModelBase
         set => Set(ref _currencySet, value);
     }
 
-    private bool _itemSet;
-    public bool ItemSet
+    // ── Item queue ────────────────────────────────────────────────────
+    public const int MinItems = 1;
+    public const int MaxItems = 10;
+
+    // One entry per item to craft. The crafter rolls them in order, advancing
+    // to the next once a slot's targets are hit.
+    public ObservableCollection<ItemSlotViewModel> ItemSlots { get; } = [];
+
+    private int _itemCount = 1;
+    public int ItemCount
     {
-        get => _itemSet;
-        set => Set(ref _itemSet, value);
+        get => _itemCount;
+        set
+        {
+            int clamped = Math.Clamp(value, MinItems, MaxItems);
+            if (clamped == _itemCount && ItemSlots.Count == clamped) return;
+            Set(ref _itemCount, clamped);
+            SyncItemSlots();
+            IncItemsCommand.Refresh();
+            DecItemsCommand.Refresh();
+        }
     }
+
+    // Grow/shrink the slot list to match ItemCount. New slots start unset;
+    // shrinking drops from the end so existing numbers/positions are kept.
+    private void SyncItemSlots()
+    {
+        while (ItemSlots.Count < _itemCount)
+        {
+            var slot = new ItemSlotViewModel(ItemSlots.Count + 1);
+            slot.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ItemSlotViewModel.IsSet)) Notify(nameof(AllItemsSet));
+            };
+            ItemSlots.Add(slot);
+        }
+        while (ItemSlots.Count > _itemCount)
+            ItemSlots.RemoveAt(ItemSlots.Count - 1);
+        Notify(nameof(AllItemsSet));
+    }
+
+    // Every queued slot has a captured position — required before auto-craft.
+    public bool AllItemsSet => ItemSlots.Count > 0 && ItemSlots.All(s => s.IsSet);
 
     private bool _isCapturing;
     public bool IsCapturing
@@ -273,8 +324,23 @@ public class MainViewModel : ViewModelBase
         set => Set(ref _isCapturing, value);
     }
 
+    // Where the next in-game click lands: the currency slot, or a specific item
+    // slot. MainWindow reads these when a position is captured.
+    public bool CapturingCurrency { get; private set; }
+    public ItemSlotViewModel? CapturingSlot { get; private set; }
+
+    // Progress banner while crafting a multi-item queue ("Крафчу 2 / 4").
+    private string _autoProgress = "";
+    public string AutoProgress
+    {
+        get => _autoProgress;
+        set => Set(ref _autoProgress, value);
+    }
+
     public RelayCommand SetCurrencyCommand { get; }
-    public RelayCommand SetItemCommand     { get; }
+    public RelayCommand<ItemSlotViewModel> SetItemSlotCommand { get; }
+    public RefreshableCommand IncItemsCommand { get; }
+    public RefreshableCommand DecItemsCommand { get; }
 
     // ── Update ────────────────────────────────────────────────────────
     public string VersionText { get; } =
@@ -315,8 +381,21 @@ public class MainViewModel : ViewModelBase
         AddTargetCommand     = new RefreshableCommand(AddTarget, () => SelectedGroup is not null && SelectedTier is not null);
         RemoveTargetCommand  = new RelayCommand<TargetModViewModel>(RemoveTarget);
         ToggleRunningCommand = new RelayCommand(() => IsRunning = !IsRunning);
-        SetCurrencyCommand   = new RelayCommand(() => IsCapturing = true);
-        SetItemCommand       = new RelayCommand(() => IsCapturing = true);
+        SetCurrencyCommand   = new RelayCommand(() =>
+        {
+            CapturingCurrency = true;
+            CapturingSlot     = null;
+            IsCapturing       = true;
+        });
+        SetItemSlotCommand = new RelayCommand<ItemSlotViewModel>(slot =>
+        {
+            CapturingCurrency = false;
+            CapturingSlot     = slot;
+            IsCapturing       = true;
+        });
+        IncItemsCommand = new RefreshableCommand(() => ItemCount++, () => ItemCount < MaxItems);
+        DecItemsCommand = new RefreshableCommand(() => ItemCount--, () => ItemCount > MinItems);
+        SyncItemSlots(); // start with a single slot
 
         _selectedSlotOption = SlotOptions.FirstOrDefault(s => s.Slot == ItemSlot.Ring) ?? SlotOptions[0];
         RefreshBaseOptions();
@@ -548,8 +627,7 @@ public class MainViewModel : ViewModelBase
             if (opt != null) SelectedClusterBase = opt;
         }
 
-        IsBlockingEnabled = s.IsBlockingEnabled;
-        IsAutoMode        = s.IsAutoMode;
+        IsAutoMode = s.IsAutoMode;
     }
 
     public void FillSettings(Services.AppSettings s)
@@ -560,7 +638,6 @@ public class MainViewModel : ViewModelBase
         s.TabletType = SelectedTabletType?.Type.ToString();
         s.Influence  = SelectedInfluence?.Influence.ToString();
         s.ClusterBase = SelectedClusterBase?.Tag;
-        s.IsBlockingEnabled = IsBlockingEnabled;
-        s.IsAutoMode        = IsAutoMode;
+        s.IsAutoMode  = IsAutoMode;
     }
 }

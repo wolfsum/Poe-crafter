@@ -15,18 +15,30 @@ public class AppSettings
     // Target mods are deliberately NOT persisted — re-adding them takes seconds
     // and a stale list from a past session caused surprise STOP/GO states.
 
-    public bool IsBlockingEnabled { get; set; } = true;
     public bool IsAutoMode        { get; set; }
 
     public int  CurrencyX   { get; set; }
     public int  CurrencyY   { get; set; }
+    public bool CurrencySet { get; set; }
+
+    // Legacy single-item position (pre-queue). Kept for one-way migration into
+    // ItemSlots when loading old settings files; no longer written.
     public int  ItemX       { get; set; }
     public int  ItemY       { get; set; }
-    public bool CurrencySet { get; set; }
     public bool ItemSet     { get; set; }
+
+    // The item-craft queue: one entry per slot, in order.
+    public List<ItemSlotSetting> ItemSlots { get; set; } = new();
 
     public double WindowLeft { get; set; } = double.NaN;
     public double WindowTop  { get; set; } = double.NaN;
+}
+
+public class ItemSlotSetting
+{
+    public int  X     { get; set; }
+    public int  Y     { get; set; }
+    public bool IsSet { get; set; }
 }
 
 public static class SettingsStore
