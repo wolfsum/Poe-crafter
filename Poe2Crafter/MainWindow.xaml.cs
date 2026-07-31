@@ -139,6 +139,8 @@ public partial class MainWindow : Window
 
         _crafter.CurrencyPos = new NativeMethods.POINT { X = s.CurrencyX, Y = s.CurrencyY };
         _vm.CurrencySet      = s.CurrencySet;
+        _crafter.AugCurrencyPos = new NativeMethods.POINT { X = s.AugCurrencyX, Y = s.AugCurrencyY };
+        _vm.AugCurrencySet      = s.AugCurrencySet;
 
         // Restore the item queue. Migrate a legacy single-item position into a
         // one-slot queue when no slot list was saved.
@@ -162,6 +164,9 @@ public partial class MainWindow : Window
         s.CurrencyX   = _crafter.CurrencyPos.X;
         s.CurrencyY   = _crafter.CurrencyPos.Y;
         s.CurrencySet = _vm.CurrencySet;
+        s.AugCurrencyX   = _crafter.AugCurrencyPos.X;
+        s.AugCurrencyY   = _crafter.AugCurrencyPos.Y;
+        s.AugCurrencySet = _vm.AugCurrencySet;
         s.ItemSlots   = _vm.ItemSlots
             .Select(sl => new ItemSlotSetting { X = sl.Pos.X, Y = sl.Pos.Y, IsSet = sl.IsSet })
             .ToList();
@@ -236,12 +241,26 @@ public partial class MainWindow : Window
                         _vm.IsRunning = false;
                         return;
                     }
+                    if (_vm.IsAltAugMode && !_vm.AugCurrencySet)
+                    {
+                        _vm.IsRunning = false;
+                        _vm.ShowNotice("Alt+Aug: задай позицию Aug (Set Aug)");
+                        return;
+                    }
+                    if (_vm.IsAltAugMode && _vm.TargetMods.Count == 0)
+                    {
+                        _vm.IsRunning = false;
+                        _vm.ShowNotice("Alt+Aug: добавь целевой мод (Prefix или Suffix)");
+                        return;
+                    }
                     _crafter.ItemPositions = _vm.ItemSlots.Select(sl => sl.Pos).ToList();
+                    _crafter.AltAugMode   = _vm.IsAltAugMode;
                     int total = _vm.ItemSlots.Count;
                     _crafter.Start(
                         () => _vm.IsStop,
                         () => _vm.LastItemHash,
                         () => _vm.EvalSeq,
+                        () => _vm.LastCraftAction,
                         idx => Dispatcher.Invoke(() =>
                             _vm.AutoProgress = total > 1 ? $"Крафчу {idx + 1} / {total}" : ""),
                         reason => Dispatcher.Invoke(() =>
@@ -271,6 +290,11 @@ public partial class MainWindow : Window
             {
                 _crafter.CurrencyPos = pt;
                 _vm.CurrencySet      = true;
+            }
+            else if (_vm.CapturingAug)
+            {
+                _crafter.AugCurrencyPos = pt;
+                _vm.AugCurrencySet      = true;
             }
             else if (_vm.CapturingSlot is { } slot)
             {

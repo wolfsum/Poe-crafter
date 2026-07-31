@@ -35,5 +35,6 @@ public class TargetModViewModel : ViewModelBase
 
     public TargetCondition ToCondition() =>
         new(Group.GroupId, TargetTier.Tier, Group.DisplayName,
-            IsExact ? TierMatchMode.Exact : TierMatchMode.AtLeast);
+            IsExact ? TierMatchMode.Exact : TierMatchMode.AtLeast,
+            Group.ModType);
 }

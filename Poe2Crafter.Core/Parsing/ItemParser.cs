@@ -2,9 +2,12 @@ using System.Text.RegularExpressions;
 
 namespace Poe2Crafter.Core.Parsing;
 
+public enum AffixType { Unknown, Prefix, Suffix }
+
 // One craftable mod line. Tier comes from the "{ Prefix Modifier ... (Tier: 5) }"
 // annotation when present; 0 = unknown (infer from value ranges).
-public record ParsedModLine(string Text, int Tier);
+// AffixType is filled from the Prefix/Suffix annotation when advanced item text is on.
+public record ParsedModLine(string Text, int Tier, AffixType AffixType = AffixType.Unknown);
 
 public record ParsedItem(
     string ItemClass,
@@ -70,6 +73,7 @@ public static class ItemParser
         bool sawAnnotations = false;
         bool keepCurrent    = false;
         int  currentTier    = 0;
+        AffixType currentAffix = AffixType.Unknown;
 
         foreach (var raw in lines.Skip(itemLevelIdx + 1))
         {
@@ -90,6 +94,9 @@ public static class ItemParser
                 keepCurrent = body.Contains("Prefix Modifier") ||
                               body.Contains("Suffix Modifier") ||
                               body.Contains("Unique Modifier");
+                currentAffix = body.Contains("Prefix Modifier") ? AffixType.Prefix
+                             : body.Contains("Suffix Modifier") ? AffixType.Suffix
+                             : AffixType.Unknown;
                 var tm = TierRegex.Match(body);
                 currentTier = tm.Success ? int.Parse(tm.Groups["t"].Value) : 0;
                 continue;
@@ -102,7 +109,7 @@ public static class ItemParser
             if (sawAnnotations)
             {
                 if (keepCurrent)
-                    mods.Add(new ParsedModLine(text, currentTier));
+                    mods.Add(new ParsedModLine(text, currentTier, currentAffix));
             }
             else
             {

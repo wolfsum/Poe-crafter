@@ -273,6 +273,46 @@ public class MainViewModel : ViewModelBase
         set => Set(ref _currencySet, value);
     }
 
+    private bool _augCurrencySet;
+    public bool AugCurrencySet
+    {
+        get => _augCurrencySet;
+        set => Set(ref _augCurrencySet, value);
+    }
+
+    // Chaos/Alt = spam one currency. Alt+Aug = Alt rerolls, Aug fills empty side.
+    private bool _isAltAugMode;
+    public bool IsAltAugMode
+    {
+        get => _isAltAugMode;
+        set
+        {
+            if (_isAltAugMode == value) return;
+            Set(ref _isAltAugMode, value);
+            Notify(nameof(IsChaosAltMode));
+            Notify(nameof(CurrencyButtonLabel));
+            AugPanelVisibility = value ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    public bool IsChaosAltMode
+    {
+        get => !_isAltAugMode;
+        set { if (value) IsAltAugMode = false; }
+    }
+
+    public string CurrencyButtonLabel => _isAltAugMode ? "Set Alt" : "Set Currency";
+
+    private Visibility _augPanelVisibility = Visibility.Collapsed;
+    public Visibility AugPanelVisibility
+    {
+        get => _augPanelVisibility;
+        private set => Set(ref _augPanelVisibility, value);
+    }
+
+    // Next orb after the latest clipboard eval — AutoCrafter reads this.
+    public CraftAction LastCraftAction { get; private set; } = CraftAction.UseAlt;
+
     // ── Item queue ────────────────────────────────────────────────────
     public const int MinItems = 1;
     public const int MaxItems = 10;
@@ -324,9 +364,10 @@ public class MainViewModel : ViewModelBase
         set => Set(ref _isCapturing, value);
     }
 
-    // Where the next in-game click lands: the currency slot, or a specific item
+    // Where the next in-game click lands: Alt/currency, Aug, or a specific item
     // slot. MainWindow reads these when a position is captured.
     public bool CapturingCurrency { get; private set; }
+    public bool CapturingAug      { get; private set; }
     public ItemSlotViewModel? CapturingSlot { get; private set; }
 
     // Progress banner while crafting a multi-item queue ("Крафчу 2 / 4").
@@ -338,6 +379,7 @@ public class MainViewModel : ViewModelBase
     }
 
     public RelayCommand SetCurrencyCommand { get; }
+    public RelayCommand SetAugCurrencyCommand { get; }
     public RelayCommand<ItemSlotViewModel> SetItemSlotCommand { get; }
     public RefreshableCommand IncItemsCommand { get; }
     public RefreshableCommand DecItemsCommand { get; }
@@ -381,15 +423,24 @@ public class MainViewModel : ViewModelBase
         AddTargetCommand     = new RefreshableCommand(AddTarget, () => SelectedGroup is not null && SelectedTier is not null);
         RemoveTargetCommand  = new RelayCommand<TargetModViewModel>(RemoveTarget);
         ToggleRunningCommand = new RelayCommand(() => IsRunning = !IsRunning);
-        SetCurrencyCommand   = new RelayCommand(() =>
+        SetCurrencyCommand = new RelayCommand(() =>
         {
             CapturingCurrency = true;
+            CapturingAug      = false;
+            CapturingSlot     = null;
+            IsCapturing       = true;
+        });
+        SetAugCurrencyCommand = new RelayCommand(() =>
+        {
+            CapturingCurrency = false;
+            CapturingAug      = true;
             CapturingSlot     = null;
             IsCapturing       = true;
         });
         SetItemSlotCommand = new RelayCommand<ItemSlotViewModel>(slot =>
         {
             CapturingCurrency = false;
+            CapturingAug      = false;
             CapturingSlot     = slot;
             IsCapturing       = true;
         });
@@ -557,6 +608,10 @@ public class MainViewModel : ViewModelBase
             var conditions = TargetMods.Select(t => t.ToCondition()).ToList();
             var result     = _matcher.Check(item, conditions);
 
+            LastCraftAction = IsAltAugMode
+                ? AltAugPolicy.Decide(item, conditions, result, _db)
+                : (result.AllMatched ? CraftAction.Stop : CraftAction.UseAlt);
+
             MatchedLines.Clear();
             StatusVisibility = Visibility.Visible;
             IsStop = result.AllMatched;
@@ -568,9 +623,18 @@ public class MainViewModel : ViewModelBase
                 foreach (var h in result.Hits)
                     MatchedLines.Add($"✓  {h.Target.DisplayName}  T{h.Tier} [{h.Value}]");
             }
+            else if (LastCraftAction == CraftAction.Abort)
+            {
+                StatusText  = $"⚠  {AltAugPolicy.AbortReason(item) ?? "Alt+Aug: нельзя продолжить"}";
+                StatusBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x22));
+                foreach (var m in result.Misses)
+                    MatchedLines.Add($"✗  {m.DisplayName}");
+            }
             else
             {
-                StatusText  = "✓  GO — keep rolling";
+                StatusText  = !IsAltAugMode ? "✓  GO — keep rolling"
+                             : LastCraftAction == CraftAction.UseAug ? "✓  GO — Aug"
+                             : "✓  GO — Alt";
                 StatusBrush = new SolidColorBrush(Color.FromRgb(0x27, 0xAE, 0x60));
                 foreach (var h in result.Hits)
                     MatchedLines.Add($"✓  {h.Target.DisplayName}  T{h.Tier} [{h.Value}]");
@@ -627,7 +691,8 @@ public class MainViewModel : ViewModelBase
             if (opt != null) SelectedClusterBase = opt;
         }
 
-        IsAutoMode = s.IsAutoMode;
+        IsAutoMode   = s.IsAutoMode;
+        IsAltAugMode = string.Equals(s.CraftMode, "AltAug", StringComparison.OrdinalIgnoreCase);
     }
 
     public void FillSettings(Services.AppSettings s)
@@ -639,5 +704,6 @@ public class MainViewModel : ViewModelBase
         s.Influence  = SelectedInfluence?.Influence.ToString();
         s.ClusterBase = SelectedClusterBase?.Tag;
         s.IsAutoMode  = IsAutoMode;
+        s.CraftMode   = IsAltAugMode ? "AltAug" : "ChaosAlt";
     }
 }

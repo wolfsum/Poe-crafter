@@ -17,9 +17,17 @@ public class AppSettings
 
     public bool IsAutoMode        { get; set; }
 
+    // "ChaosAlt" (single currency) or "AltAug" (Alt + Aug dual currency)
+    public string CraftMode { get; set; } = "ChaosAlt";
+
     public int  CurrencyX   { get; set; }
     public int  CurrencyY   { get; set; }
     public bool CurrencySet { get; set; }
+
+    // Augmentation slot — only used in Alt+Aug mode
+    public int  AugCurrencyX   { get; set; }
+    public int  AugCurrencyY   { get; set; }
+    public bool AugCurrencySet { get; set; }
 
     // Legacy single-item position (pre-queue). Kept for one-way migration into
     // ItemSlots when loading old settings files; no longer written.

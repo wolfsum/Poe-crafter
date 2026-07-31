@@ -168,16 +168,41 @@
             <TextBlock Text="Auto-craft positions:" Foreground="{StaticResource DimBrush}"
                        FontSize="11" Margin="0,0,0,6"/>
 
-            <!-- Currency slot -->
-            <Button Command="{Binding SetCurrencyCommand}" Margin="0,0,0,8"
+            <!-- Craft mode -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <RadioButton Content="Chaos/Alt" IsChecked="{Binding IsChaosAltMode}"
+                             GroupName="CraftMode" Margin="0,0,12,0"
+                             Foreground="{StaticResource DimBrush}"
+                             ToolTip="Одна валюта — кликает ей, пока не попадёт цель"/>
+                <RadioButton Content="Alt+Aug" IsChecked="{Binding IsAltAugMode}"
+                             GroupName="CraftMode"
+                             Foreground="{StaticResource DimBrush}"
+                             ToolTip="Alt перебрасывает; Aug заполняет пустую сторону аффикса"/>
+            </StackPanel>
+
+            <!-- Currency slot(s) -->
+            <Button Command="{Binding SetCurrencyCommand}" Margin="0,0,0,6"
                     BorderBrush="{Binding CurrencySet, Converter={StaticResource BoolToStateBrush}}"
-                    ToolTip="Позиция слота с валютой. Зелёная ✓ — задана, красный ✗ — нет.">
+                    ToolTip="Позиция Alt / основной валюты. Зелёная ✓ — задана, красный ✗ — нет.">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding CurrencySet, Converter={StaticResource BoolToCheck}}"
                                FontWeight="Bold"
                                Foreground="{Binding CurrencySet, Converter={StaticResource BoolToStateBrush}}"
                                Margin="0,0,5,0"/>
-                    <TextBlock Text="Set Currency"/>
+                    <TextBlock Text="{Binding CurrencyButtonLabel}"/>
+                </StackPanel>
+            </Button>
+
+            <Button Command="{Binding SetAugCurrencyCommand}" Margin="0,0,0,8"
+                    Visibility="{Binding AugPanelVisibility}"
+                    BorderBrush="{Binding AugCurrencySet, Converter={StaticResource BoolToStateBrush}}"
+                    ToolTip="Позиция Augmentation. Зелёная ✓ — задана, красный ✗ — нет.">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding AugCurrencySet, Converter={StaticResource BoolToCheck}}"
+                               FontWeight="Bold"
+                               Foreground="{Binding AugCurrencySet, Converter={StaticResource BoolToStateBrush}}"
+                               Margin="0,0,5,0"/>
+                    <TextBlock Text="Set Aug"/>
                 </StackPanel>
             </Button>
 

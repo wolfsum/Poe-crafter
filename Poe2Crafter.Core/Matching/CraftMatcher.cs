@@ -9,31 +9,45 @@ public class CraftMatcher(ModDatabase db, bool useAnnotationTiers = true)
         if (targets.Count == 0)
             return new MatchResult(true, false, [], []);
 
-        // Match every mod line against the database. The tier parsed from the
-        // in-game annotation wins over the DB tier inferred from value ranges —
-        // but only when the game's tier numbering matches the DB (PoE2). PoE1
-        // counts tiers down from the top, so there we trust the value ranges.
-        var allMatches = item.Mods
-            .SelectMany(line => db.Match(line.Text)
-                .Select(m => (line, m, tier: useAnnotationTiers && line.Tier > 0 ? line.Tier : m.Mod.Tier)))
-            .ToList();
-
         var hits   = new List<HitInfo>();
         var misses = new List<TargetCondition>();
 
+        // Match each target by its GroupId directly. Do NOT assign each clipboard
+        // line to a single global winner first — the same text often exists in
+        // both gear and jewel/abyss pools under different groups (e.g. +mana →
+        // IncreasedMana vs AbyssJewelMana), and the wrong winner made targets
+        // miss systematically.
         foreach (var target in targets)
         {
-            var hit = allMatches.FirstOrDefault(x =>
-                x.m.Mod.Group == target.GroupId &&
-                (target.Tier == 0 || // untiered mods (jewels): any roll counts
-                 (target.Mode == TierMatchMode.AtLeast
-                    ? x.tier >= target.Tier
-                    : x.tier == target.Tier)));
-
-            if (hit != default)
-                hits.Add(new HitInfo(target, hit.line.Text, hit.m.PrimaryValue, hit.tier));
-            else
+            var lm = db.MatchGroup(item.Mods, target.GroupId, item.ItemClass);
+            if (lm is null)
+            {
                 misses.Add(target);
+                continue;
+            }
+
+            int tier = useAnnotationTiers && lm.FirstLine.Tier > 0
+                ? lm.FirstLine.Tier
+                : lm.Match.Mod.Tier;
+
+            // Untiered jewel mods (Tier 0 in PoB) always pass the tier check —
+            // the UI still shows a single "tier" row but there's nothing to compare.
+            bool tierOk = target.Tier == 0
+                || lm.Match.Mod.Tier == 0
+                || (target.Mode == TierMatchMode.AtLeast ? tier >= target.Tier : tier == target.Tier);
+
+            if (!tierOk)
+            {
+                misses.Add(target);
+                continue;
+            }
+
+            var text = lm.DisplayText
+                ?? (lm.LineCount == 1
+                    ? lm.FirstLine.Text
+                    : string.Join(" / ", item.Mods.Skip(lm.Index).Take(lm.LineCount).Select(x => x.Text)));
+
+            hits.Add(new HitInfo(target, text, lm.Match.PrimaryValue, tier));
         }
 
         return new MatchResult(

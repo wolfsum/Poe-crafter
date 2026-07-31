@@ -100,7 +100,7 @@ public static class PobModParser
                 }
             }
 
-            var (vMin, vMax) = ExtractRanges(template);
+            var (vMin, vMax) = ExtractRanges(string.Join(" ", templates));
 
             results.Add(new ModDefinition
             {
@@ -109,7 +109,9 @@ public static class PobModParser
                 AffixName = affixMatch.Success ? affixMatch.Groups["v"].Value : "",
                 Template  = template,
                 Templates = templates,
-                MatchRegex = BuildMatchRegex(template),
+                // Join every stat line — dual mods like minion Attack/Cast Speed
+                // appear as two clipboard lines and must match as a pair.
+                MatchRegex = BuildMatchRegex(templates),
                 Group     = groupMatch.Groups["v"].Value,
                 Tier      = tierMatch.Success ? int.Parse(tierMatch.Groups[1].Value) : 0,
                 MinLevel  = levelMatch.Success ? int.Parse(levelMatch.Groups["v"].Value) : 0,
@@ -194,5 +196,14 @@ public static class PobModParser
     {
         var parts = Regex.Split(template, @"\(\d+(?:\.\d+)?-\d+(?:\.\d+)?\)");
         return string.Join(@"(\d+(?:\.\d+)?)", parts.Select(Regex.Escape));
+    }
+
+    // Multi-line mods: each template becomes a regex segment, joined by a newline
+    // so clipboard lines "Attack Speed" + "Cast Speed" match as one affix.
+    public static string BuildMatchRegex(IReadOnlyList<string> templates)
+    {
+        if (templates.Count == 0) return "";
+        if (templates.Count == 1) return BuildMatchRegex(templates[0]);
+        return string.Join("\n", templates.Select(BuildMatchRegex));
     }
 }
