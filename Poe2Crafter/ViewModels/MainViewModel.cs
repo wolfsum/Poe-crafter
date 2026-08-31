@@ -200,16 +200,72 @@ public class MainViewModel : ViewModelBase
         get => _isRunning;
         set
         {
+            bool wasRunning = _isRunning;
             Set(ref _isRunning, value);
             Notify(nameof(RunButtonText));
-            if (!value)
+            if (value)
+            {
+                if (!wasRunning) SessionSpent = 0; // every Start opens a fresh tally
+            }
+            else
             {
                 StatusVisibility = Visibility.Collapsed;
                 IsStop = false;
                 AutoProgress = "";
+                _applyPending = false;
             }
         }
     }
+
+    // ── Spend counter ─────────────────────────────────────────────────
+    // An "apply" is registered when currency is actually used (auto-crafter
+    // click, or a live click that passed the hook), but only counted once the
+    // following clipboard read yields a readable item — a click on the stash
+    // background or a dropped keystroke must not inflate the tally. The tally
+    // spans the whole session, including a multi-item queue: the budget is what
+    // the stack can afford, not what one item costs.
+    private volatile bool _applyPending;
+
+    private int _sessionSpent;
+    public int SessionSpent
+    {
+        get => _sessionSpent;
+        private set { Set(ref _sessionSpent, value); Notify(nameof(SpendText)); Notify(nameof(SpendTooltip)); }
+    }
+
+    private int _totalSpent;
+    public int TotalSpent
+    {
+        get => _totalSpent;
+        set { Set(ref _totalSpent, value); Notify(nameof(SpendTooltip)); }
+    }
+
+    // 0 = unlimited. Any positive value stops the session once that many orbs
+    // have been spent, so an auto-craft left alone can't eat the whole stack.
+    private int _stopAfter;
+    public int StopAfter
+    {
+        get => _stopAfter;
+        set { Set(ref _stopAfter, value); Notify(nameof(StopAfterText)); Notify(nameof(SpendText)); }
+    }
+
+    public string StopAfterText
+    {
+        get => _stopAfter.ToString();
+        set => StopAfter = int.TryParse(value, out var n) && n > 0 ? n : 0;
+    }
+
+    public string SpendText => StopAfter > 0 ? $"{SessionSpent} / {StopAfter}" : SessionSpent.ToString();
+
+    public string SpendTooltip =>
+        $"Потрачено за сессию: {SessionSpent}. Всего: {TotalSpent}. Лимит 0 = без ограничения.";
+
+    // Raised when the spend limit is reached — the window owns stopping, since
+    // it has to stop the crafter and the mouse hook as well.
+    public event Action<string>? StopRequested;
+
+    // Called from the auto-crafter thread and from the mouse hook
+    public void RegisterApply() => _applyPending = true;
 
     private bool _isStop;
     public bool IsStop
@@ -451,6 +507,7 @@ public class MainViewModel : ViewModelBase
         _selectedSlotOption = SlotOptions.FirstOrDefault(s => s.Slot == ItemSlot.Ring) ?? SlotOptions[0];
         RefreshBaseOptions();
         RefreshModGroups();
+        InitPresets();
     }
 
     private void RefreshBaseOptions()
@@ -594,6 +651,15 @@ public class MainViewModel : ViewModelBase
                 ? string.Join("|", item.Mods.Select(m => m.Text))
                 : "";
 
+            // Confirm a pending apply: currency was used and the item came back
+            // readable, so exactly one orb is accounted for.
+            if (_applyPending && LastItemHash != "")
+            {
+                _applyPending = false;
+                SessionSpent++;
+                TotalSpent++;
+            }
+
             // Only process clipboard when actively running
             if (!IsRunning || TargetMods.Count == 0)
             {
@@ -622,6 +688,7 @@ public class MainViewModel : ViewModelBase
                 StatusBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
                 foreach (var h in result.Hits)
                     MatchedLines.Add($"✓  {h.Target.DisplayName}  T{h.Tier} [{h.Value}]");
+                MatchedLines.Add($"◆  потрачено: {SessionSpent}");
             }
             else if (LastCraftAction == CraftAction.Abort)
             {
@@ -646,6 +713,11 @@ public class MainViewModel : ViewModelBase
         {
             _evalSeq++; // signal AutoCrafter: clipboard processed, IsStop/hash are fresh
         }
+
+        // Budget stop comes after the status update: a roll that hits the target
+        // on the very last orb still shows STOP rather than a limit warning.
+        if (IsRunning && !IsStop && StopAfter > 0 && SessionSpent >= StopAfter)
+            StopRequested?.Invoke($"Лимит {StopAfter} — потрачено, стоп");
     }
 
     // Orange info banner (auto-craft stop reasons etc.)
@@ -660,39 +732,49 @@ public class MainViewModel : ViewModelBase
     // ── Settings persistence ──────────────────────────────────────────
     public void ApplySettings(Services.AppSettings s)
     {
-        if (Enum.TryParse<ItemSlot>(s.Slot, out var slot))
+        ApplySelection(s.Slot, s.ArmourBase, s.JewelType, s.TabletType, s.Influence, s.ClusterBase);
+
+        IsAutoMode   = s.IsAutoMode;
+        IsAltAugMode = string.Equals(s.CraftMode, "AltAug", StringComparison.OrdinalIgnoreCase);
+        StopAfter    = s.StopAfter;
+        TotalSpent   = s.TotalSpent;
+    }
+
+    // Restore the item context (slot → base/jewel/tablet/influence). Order
+    // matters: the slot refresh rebuilds the dependent option lists.
+    private void ApplySelection(string? slot, string? armourBase, string? jewelType,
+                                string? tabletType, string? influence, string? clusterBase)
+    {
+        if (Enum.TryParse<ItemSlot>(slot, out var s))
         {
-            var opt = SlotOptions.FirstOrDefault(o => o.Slot == slot);
+            var opt = SlotOptions.FirstOrDefault(o => o.Slot == s);
             if (opt != null) SelectedSlotOption = opt; // triggers base/jewel refresh
         }
-        if (Enum.TryParse<ArmourBase>(s.ArmourBase, out var ab))
+        if (Enum.TryParse<ArmourBase>(armourBase, out var ab))
         {
             var opt = BaseOptions.FirstOrDefault(o => o.Base == ab);
             if (opt != null) SelectedBaseOption = opt;
         }
-        if (Enum.TryParse<JewelType>(s.JewelType, out var jt))
+        if (Enum.TryParse<JewelType>(jewelType, out var jt))
         {
             var opt = JewelTypeOptions.FirstOrDefault(o => o.Type == jt);
             if (opt != null) SelectedJewelType = opt;
         }
-        if (Enum.TryParse<TabletType>(s.TabletType, out var tt))
+        if (Enum.TryParse<TabletType>(tabletType, out var tt))
         {
             var opt = TabletTypeOptions.FirstOrDefault(o => o.Type == tt);
             if (opt != null) SelectedTabletType = opt;
         }
-        if (Enum.TryParse<Influence>(s.Influence, out var inf))
+        if (Enum.TryParse<Influence>(influence, out var inf))
         {
             var opt = InfluenceOptions.FirstOrDefault(o => o.Influence == inf);
             if (opt != null) SelectedInfluence = opt;
         }
-        if (s.ClusterBase != null)
+        if (clusterBase != null)
         {
-            var opt = ClusterBaseOptions.FirstOrDefault(o => o.Tag == s.ClusterBase);
+            var opt = ClusterBaseOptions.FirstOrDefault(o => o.Tag == clusterBase);
             if (opt != null) SelectedClusterBase = opt;
         }
-
-        IsAutoMode   = s.IsAutoMode;
-        IsAltAugMode = string.Equals(s.CraftMode, "AltAug", StringComparison.OrdinalIgnoreCase);
     }
 
     public void FillSettings(Services.AppSettings s)
@@ -705,5 +787,131 @@ public class MainViewModel : ViewModelBase
         s.ClusterBase = SelectedClusterBase?.Tag;
         s.IsAutoMode  = IsAutoMode;
         s.CraftMode   = IsAltAugMode ? "AltAug" : "ChaosAlt";
+        s.StopAfter   = StopAfter;
+        s.TotalSpent  = TotalSpent;
+    }
+
+    // ── Craft presets ─────────────────────────────────────────────────
+    // The whole file is kept in memory (both games) so saving one game's preset
+    // never drops the other's. The visible list is filtered to the active game:
+    // a PoE1 group id means nothing in PoE2.
+    private List<Services.CraftPreset> _allPresets = [];
+
+    public ObservableCollection<Services.CraftPreset> Presets { get; } = [];
+
+    private Services.CraftPreset? _selectedPreset;
+    public Services.CraftPreset? SelectedPreset
+    {
+        get => _selectedPreset;
+        set { Set(ref _selectedPreset, value); if (value != null) NewPresetName = value.Name; }
+    }
+
+    private string _newPresetName = "";
+    public string NewPresetName
+    {
+        get => _newPresetName;
+        set => Set(ref _newPresetName, value);
+    }
+
+    public RelayCommand SavePresetCommand   { get; private set; } = null!;
+    public RelayCommand LoadPresetCommand   { get; private set; } = null!;
+    public RelayCommand DeletePresetCommand { get; private set; } = null!;
+
+    private void InitPresets()
+    {
+        SavePresetCommand   = new RelayCommand(SavePreset);
+        LoadPresetCommand   = new RelayCommand(LoadPreset);
+        DeletePresetCommand = new RelayCommand(DeletePreset);
+
+        _allPresets = Services.PresetStore.Load();
+        RefreshPresetList();
+    }
+
+    private void RefreshPresetList()
+    {
+        Presets.Clear();
+        foreach (var p in _allPresets.Where(p => p.Game == GameKey)
+                                     .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
+            Presets.Add(p);
+    }
+
+    private void SavePreset()
+    {
+        var name = NewPresetName.Trim();
+        if (name.Length == 0) name = SelectedPreset?.Name ?? "";
+        if (name.Length == 0) { ShowNotice("Введи имя пресета"); return; }
+        if (TargetMods.Count == 0) { ShowNotice("Нечего сохранять — список целей пуст"); return; }
+
+        var preset = new Services.CraftPreset
+        {
+            Name        = name,
+            Game        = GameKey,
+            Slot        = SelectedSlotOption?.Slot.ToString(),
+            ArmourBase  = SelectedBaseOption?.Base.ToString(),
+            JewelType   = SelectedJewelType?.Type.ToString(),
+            TabletType  = SelectedTabletType?.Type.ToString(),
+            Influence   = SelectedInfluence?.Influence.ToString(),
+            ClusterBase = SelectedClusterBase?.Tag,
+            CraftMode   = IsAltAugMode ? "AltAug" : "ChaosAlt",
+            StopAfter   = StopAfter,
+            Targets     = TargetMods.Select(t => new Services.PresetTarget
+            {
+                GroupId = t.Group.GroupId,
+                Tier    = t.TargetTier.Tier,
+                Exact   = t.IsExact,
+            }).ToList(),
+        };
+
+        // Same name in the same game overwrites — "Save" doubling as "update"
+        // is what people expect from a preset box.
+        _allPresets.RemoveAll(p => p.Game == GameKey &&
+                                   string.Equals(p.Name, name, StringComparison.CurrentCultureIgnoreCase));
+        _allPresets.Add(preset);
+        Services.PresetStore.Save(_allPresets);
+        RefreshPresetList();
+        SelectedPreset = Presets.FirstOrDefault(p => ReferenceEquals(p, preset));
+        ShowNotice($"Пресет «{name}» сохранён");
+    }
+
+    private void LoadPreset()
+    {
+        var preset = SelectedPreset;
+        if (preset is null) { ShowNotice("Выбери пресет"); return; }
+
+        ApplySelection(preset.Slot, preset.ArmourBase, preset.JewelType,
+                       preset.TabletType, preset.Influence, preset.ClusterBase);
+        IsAltAugMode = string.Equals(preset.CraftMode, "AltAug", StringComparison.OrdinalIgnoreCase);
+        StopAfter    = preset.StopAfter;
+
+        // Rebuild the targets against the freshly refreshed group list. A group
+        // that can't spawn under this selection (data update, wrong base) is
+        // reported instead of being silently dropped — a half-loaded target list
+        // is exactly the kind of surprise STOP we avoid elsewhere.
+        TargetMods.Clear();
+        int missing = 0;
+        foreach (var t in preset.Targets)
+        {
+            var group = _allGroups.FirstOrDefault(g => g.GroupId == t.GroupId);
+            if (group is null) { missing++; continue; }
+            var tier = group.Tiers.FirstOrDefault(x => x.Tier == t.Tier) ?? group.Tiers[0];
+            TargetMods.Add(new TargetModViewModel(group, tier) { IsExact = t.Exact });
+        }
+        TargetListVisibility = TargetMods.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        ShowNotice(missing == 0
+            ? $"Пресет «{preset.Name}»: целей {TargetMods.Count}"
+            : $"Пресет «{preset.Name}»: целей {TargetMods.Count}, недоступно {missing}");
+    }
+
+    private void DeletePreset()
+    {
+        var preset = SelectedPreset;
+        if (preset is null) return;
+        _allPresets.Remove(preset);
+        Services.PresetStore.Save(_allPresets);
+        RefreshPresetList();
+        SelectedPreset = null;
+        NewPresetName  = "";
+        ShowNotice($"Пресет «{preset.Name}» удалён");
     }
 }

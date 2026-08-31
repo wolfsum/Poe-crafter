@@ -28,6 +28,7 @@ public partial class MainWindow : Window
         _vm.PropertyChanged       += OnVmPropertyChanged;
         _vm.UpdateCommand.Executed      += OnUpdateRequested;
         _vm.SwitchGameCommand.Executed  += OnSwitchGame;
+        _vm.StopRequested               += OnStopRequested;
 
         LoadSettings();
 
@@ -127,6 +128,14 @@ public partial class MainWindow : Window
             _vm.ShowNotice($"Update error: {ex.Message}");
         }
         finally { _updateBusy = false; }
+    }
+
+    // Spend limit reached — stop the whole session (crafter + hook) the same way
+    // the Stop button does, then say why.
+    private void OnStopRequested(string reason)
+    {
+        _vm.IsRunning = false;
+        _vm.ShowNotice(reason);
     }
 
     private void LoadSettings()
@@ -267,7 +276,8 @@ public partial class MainWindow : Window
                         {
                             _vm.IsRunning = false;
                             if (reason != null) _vm.ShowNotice(reason);
-                        }));
+                        }),
+                        () => _vm.RegisterApply());
                 }
             }
             else
@@ -314,6 +324,10 @@ public partial class MainWindow : Window
     // input anyway; the beep is the alert.
     private async void OnLeftClickPassed()
     {
+        // Manual mode: a click that reached the game is an orb use — the tally
+        // confirms it only if the follow-up read returns a readable item.
+        _vm.RegisterApply();
+
         int gen = ++_clickGen;
         int seqBefore = _vm.EvalSeq;
         await Task.Delay(CtrlCDelayMs);

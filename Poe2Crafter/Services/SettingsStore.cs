@@ -20,6 +20,9 @@ public class AppSettings
     // "ChaosAlt" (single currency) or "AltAug" (Alt + Aug dual currency)
     public string CraftMode { get; set; } = "ChaosAlt";
 
+    public int  StopAfter  { get; set; } // 0 = unlimited
+    public int  TotalSpent { get; set; } // lifetime orb tally, survives restarts
+
     public int  CurrencyX   { get; set; }
     public int  CurrencyY   { get; set; }
     public bool CurrencySet { get; set; }

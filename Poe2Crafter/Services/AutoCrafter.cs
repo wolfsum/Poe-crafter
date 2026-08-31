@@ -23,10 +23,10 @@ public sealed class AutoCrafter
 
     public void Start(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq,
                       Func<CraftAction> getAction,
-                      Action<int> onItemStart, Action<string?> onStopped)
+                      Action<int> onItemStart, Action<string?> onStopped, Action onApplied)
     {
         _cts = new CancellationTokenSource();
-        Task.Run(() => RunLoop(shouldStop, getItemHash, getEvalSeq, getAction, onItemStart, onStopped, _cts.Token));
+        Task.Run(() => RunLoop(shouldStop, getItemHash, getEvalSeq, getAction, onItemStart, onStopped, onApplied, _cts.Token));
     }
 
     public void Stop() => _cts?.Cancel();
@@ -36,7 +36,7 @@ public sealed class AutoCrafter
     // ── Main loop ─────────────────────────────────────────────────────
     private async Task RunLoop(Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq,
                                Func<CraftAction> getAction,
-                               Action<int> onItemStart, Action<string?> onStopped, CancellationToken ct)
+                               Action<int> onItemStart, Action<string?> onStopped, Action onApplied, CancellationToken ct)
     {
         string? stopReason = null;
         var held = HeldOrb.None;
@@ -62,7 +62,7 @@ public sealed class AutoCrafter
                 onItemStart(idx);
                 (bool matched, stopReason, shiftFreeCopy, held) =
                     await RunItem(items[idx], shiftFreeCopy, held,
-                        shouldStop, getItemHash, getEvalSeq, getAction, ct);
+                        shouldStop, getItemHash, getEvalSeq, getAction, onApplied, ct);
                 if (!matched) break; // hit a failure — surface the reason and stop
             }
 
@@ -80,7 +80,7 @@ public sealed class AutoCrafter
     private async Task<(bool matched, string? reason, bool shiftFreeCopy, HeldOrb held)> RunItem(
         NativeMethods.POINT itemPos, bool shiftFreeCopy, HeldOrb held,
         Func<bool> shouldStop, Func<string?> getItemHash, Func<int> getEvalSeq,
-        Func<CraftAction> getAction, CancellationToken ct)
+        Func<CraftAction> getAction, Action onApplied, CancellationToken ct)
     {
         int cycleCount    = 0;
         int sameHashCount = 0;
@@ -119,6 +119,7 @@ public sealed class AutoCrafter
             await MoveSmooth(GetCursor(), target, ct);
             await Delay(Rng(40, 80), 0, ct);
             await ClickAsync(right: false, ct);
+            onApplied(); // one orb left the stack — counted once the read confirms it
 
             // Wait for PoE2 to process the orb use
             await Delay(Rng(130, 180), 15, ct);

@@ -92,6 +92,55 @@
                     Padding="10,4" FontSize="12"/>
         </Grid>
 
+        <!-- Spend counter + budget stop -->
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Spent:" VerticalAlignment="Center"
+                       Foreground="{StaticResource DimBrush}" FontSize="11"/>
+            <TextBlock Grid.Column="1" Text="{Binding SpendText}" Margin="6,0,0,0"
+                       VerticalAlignment="Center" FontWeight="SemiBold"
+                       Foreground="{StaticResource AccentBrush}"
+                       ToolTip="{Binding SpendTooltip}"/>
+            <TextBlock Grid.Column="3" Text="Stop after:" VerticalAlignment="Center"
+                       Foreground="{StaticResource DimBrush}" FontSize="11" Margin="0,0,6,0"/>
+            <TextBox   Grid.Column="4" Width="52"
+                       Text="{Binding StopAfterText, UpdateSourceTrigger=PropertyChanged}"
+                       ToolTip="Стоп после N орбов за сессию. 0 — без ограничения."/>
+        </Grid>
+
+        <!-- Craft presets -->
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox ItemsSource="{Binding Presets}"
+                      SelectedItem="{Binding SelectedPreset}"
+                      ToolTip="Сохранённые наборы целей для этой игры"/>
+            <Button Grid.Column="1" Content="Load" Margin="6,0,0,0" Padding="8,2"
+                    Command="{Binding LoadPresetCommand}"
+                    ToolTip="Подставить слот, базу, режим и цели из пресета"/>
+            <Button Grid.Column="2" Content="Save" Margin="6,0,0,0" Padding="8,2"
+                    Command="{Binding SavePresetCommand}"
+                    ToolTip="Сохранить текущие цели под именем из поля ниже (совпадающее имя перезаписывается)"/>
+            <Button Grid.Column="3" Content="✕" Margin="6,0,0,0" Width="24"
+                    Foreground="{StaticResource DangerBrush}"
+                    BorderBrush="{StaticResource DangerBrush}"
+                    Command="{Binding DeletePresetCommand}"
+                    ToolTip="Удалить выбранный пресет"/>
+        </Grid>
+        <TextBox Text="{Binding NewPresetName, UpdateSourceTrigger=PropertyChanged}"
+                 Margin="0,0,0,8"
+                 ToolTip="Имя пресета для сохранения"/>
+
         <!-- Slot + Base -->
         <Grid Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
